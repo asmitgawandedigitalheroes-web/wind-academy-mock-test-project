@@ -1,0 +1,102 @@
+'use client'
+
+import React from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import {
+  LayoutDashboard,
+  Users,
+  BookOpen,
+  FileText,
+  ChevronRight,
+  Plane,
+  HelpCircle,
+  CreditCard
+} from 'lucide-react'
+import Image from 'next/image'
+
+const menuItems = [
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'User Management', href: '/admin/users', icon: Users },
+  { name: 'Question Bank', href: '/admin/questions', icon: HelpCircle },
+  { name: 'Manage Courses', href: '/admin/courses', icon: BookOpen },
+  { name: 'Subscriptions', href: '/admin/subscriptions', icon: CreditCard },
+]
+
+import { X } from 'lucide-react'
+
+interface AdminSidebarProps {
+  isOpen: boolean;
+  setIsOpen: (val: boolean) => void;
+}
+
+export default function AdminSidebar({ isOpen, setIsOpen }: AdminSidebarProps) {
+  const pathname = usePathname()
+
+  return (
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+      
+      <aside className={`fixed left-0 top-0 h-screen w-64 bg-[#0f172a] text-slate-300 flex flex-col z-50 transition-transform duration-300 border-r border-slate-800 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Brand Logo */}
+      <div className="p-6 border-b border-slate-800">
+        <Link href="/admin" className="flex items-center gap-3 group">
+          <div className="relative w-10 h-10 flex items-center justify-center overflow-hidden bg-white rounded-lg">
+            <Image src="/logo.jpg" alt="Logo" fill className="object-contain" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-black text-white leading-none tracking-tight">WINGS</span>
+            <span className="text-[0.6rem] font-bold text-accent uppercase tracking-widest mt-0.5">ADMIN</span>
+          </div>
+        </Link>
+        <button 
+          onClick={() => setIsOpen(false)}
+          className="lg:hidden p-2 text-slate-400 hover:text-white transition-colors absolute top-6 right-4"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Navigation Links */}
+      <nav className="flex-1 mt-6 px-4 space-y-2 overflow-y-auto">
+        {menuItems.map((item) => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setIsOpen(false)}
+              className={`flex items-center justify-between p-3 rounded-xl transition-all group ${
+                isActive 
+                ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                : 'hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <item.icon className={`w-5 h-5 ${isActive ? 'text-accent' : 'text-slate-400 group-hover:text-accent'} transition-colors`} />
+                <span className="font-semibold text-sm">{item.name}</span>
+              </div>
+              {isActive && <ChevronRight className="w-4 h-4 text-white/50" />}
+            </Link>
+          )
+        })}
+      </nav>
+
+      {/* Footer Info */}
+      <div className="p-6 border-t border-slate-800 text-[0.65rem] text-slate-500 font-medium">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-sm shadow-green-500/50"></div>
+          <span>System Online</span>
+        </div>
+        <p>© {new Date().getFullYear()} Wings Academy Admin</p>
+      </div>
+    </aside>
+    </>
+  )
+}

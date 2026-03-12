@@ -1,0 +1,151 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { 
+  Plus, 
+  Search, 
+  Layers, 
+  ChevronRight,
+  BookOpen,
+  HelpCircle,
+  MoreVertical,
+  FileText
+} from 'lucide-react'
+import Link from 'next/link'
+import { getStats, getCategories, getSubjectsWithCategories } from '@/app/actions/admin'
+import AddSubjectForm from '@/components/admin/questions/AddSubjectForm'
+import AddQuestionForm from '@/components/admin/questions/AddQuestionForm'
+
+export default function SubjectManager() {
+  const [showSubjectForm, setShowSubjectForm] = useState(false)
+  const [showQuestionForm, setShowQuestionForm] = useState(false)
+  const [categories, setCategories] = useState<any[]>([])
+  const [subjects, setSubjects] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchData = async () => {
+    setLoading(true)
+    const [c, sub] = await Promise.all([
+      getCategories(),
+      getSubjectsWithCategories()
+    ])
+    setCategories(c)
+    setSubjects(sub)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  // No more grouping needed
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500 relative">
+      {/* Modals */}
+      {(showSubjectForm || showQuestionForm) && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            {showSubjectForm && (
+                <AddSubjectForm 
+                  categories={categories} 
+                  onCancel={() => setShowSubjectForm(false)} 
+                  onSuccess={() => {
+                      setShowSubjectForm(false)
+                      fetchData()
+                  }} 
+                />
+            )}
+            {showQuestionForm && (
+                <AddQuestionForm 
+                  subjects={subjects} 
+                  onCancel={() => setShowQuestionForm(false)} 
+                  onSuccess={() => {
+                      setShowQuestionForm(false)
+                      fetchData()
+                  }} 
+                />
+            )}
+        </div>
+      )}
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-[#0f172a] tracking-tight">Subjects</h1>
+          <p className="text-slate-500 font-medium mt-1">Manage your examination modules and categories.</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setShowSubjectForm(true)}
+            className="flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-primary/20 hover:bg-[#152e75] transition-all shrink-0"
+          >
+            <Plus className="w-5 h-5" />
+            Add Subject
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-20 flex flex-col items-center gap-4">
+           <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+           <p className="text-slate-400 font-bold text-sm">Loading subjects...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {subjects.map((subject: any) => (
+            <div key={subject.id} className="group relative">
+              <Link 
+                  href={`/admin/subjects/${subject.id}`}
+                  className="block bg-white p-6 rounded-[2rem] border border-slate-100 shadow-lg shadow-primary/5 hover:border-primary/20 transition-all relative overflow-hidden h-full"
+              >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-10 -mt-10 group-hover:bg-primary/10 transition-colors"></div>
+                  
+                  <div className="flex justify-between items-start relative z-10 mb-4">
+                      <div className="p-3 bg-slate-50 rounded-2xl group-hover:scale-110 transition-transform">
+                          <Layers className="w-6 h-6 text-primary" />
+                      </div>
+                      <button 
+                          onClick={(e) => {
+                              e.preventDefault()
+                              // Future: open edit/delete menu
+                          }}
+                          className="p-2 hover:bg-slate-50 rounded-full transition-colors"
+                      >
+                          <MoreVertical className="w-4 h-4 text-slate-400" />
+                      </button>
+                  </div>
+
+                  <div>
+                     <span className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest">{subject.categories?.name}</span>
+                     <h3 className="text-lg font-black text-[#0f172a] mb-2">{subject.name}</h3>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mt-4 pt-4 border-t border-slate-50 group-hover:border-slate-100 transition-colors">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>View Tests</span>
+                  </div>
+              </Link>
+            </div>
+          ))}
+
+          {subjects.length === 0 && !loading && (
+             <div className="col-span-full bg-white p-20 rounded-[3rem] border border-slate-100 shadow-2xl shadow-primary/5 text-center space-y-6">
+                <div className="w-24 h-24 bg-primary/5 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8">
+                    <Layers className="w-12 h-12 text-primary" />
+                </div>
+                <h2 className="text-3xl font-black text-[#0f172a]">Ready to start?</h2>
+                <p className="text-slate-500 max-w-sm mx-auto font-medium">Create your first subject module to begin building your question bank for students.</p>
+                <button 
+                    onClick={() => setShowSubjectForm(true)}
+                    className="bg-primary text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.05] transition-all"
+                >
+                    Create First Subject
+                </button>
+             </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+

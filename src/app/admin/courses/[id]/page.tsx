@@ -1,0 +1,173 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { 
+  ChevronLeft, 
+  Plus, 
+  BookOpen, 
+  ChevronRight,
+  Library,
+  Trash2,
+  HelpCircle,
+  FileText
+} from 'lucide-react'
+import Link from 'next/link'
+import { getCourseDetails, getCourseSubjects, removeSubjectFromCourse } from '@/app/actions/admin'
+import AddSubjectToCourseModal from '@/components/admin/courses/AddSubjectToCourseModal'
+
+export default function CourseDetailPage() {
+  const params = useParams()
+  const router = useRouter()
+  const id = params.id as string
+
+  const [course, setCourse] = useState<any>(null)
+  const [subjects, setSubjects] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showAddSubject, setShowAddSubject] = useState(false)
+
+  const fetchData = async () => {
+    setLoading(true)
+    const [courseDetails, subjectList] = await Promise.all([
+      getCourseDetails(id),
+      getCourseSubjects(id)
+    ])
+    setCourse(courseDetails)
+    setSubjects(subjectList)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [id])
+
+  const handleRemoveSubject = async (subjectId: string) => {
+    if (confirm('Are you sure you want to remove this subject from the course?')) {
+      setLoading(true)
+      const result = await removeSubjectFromCourse(id, subjectId)
+      if (result.success) {
+        fetchData()
+      } else {
+        alert('Error: ' + result.error)
+        setLoading(false)
+      }
+    }
+  }
+
+  if (loading && !course) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+        <p className="font-black text-slate-400 animate-pulse">Loading course data...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Add Subject Modal */}
+      {showAddSubject && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <AddSubjectToCourseModal 
+            courseId={id}
+            attachedSubjectIds={subjects.map(s => s.subject_id)}
+            onCancel={() => setShowAddSubject(false)}
+            onSuccess={() => {
+              setShowAddSubject(false)
+              fetchData()
+            }}
+          />
+        </div>
+      )}
+
+      {/* Breadcrumb & Title */}
+      <div className="flex flex-col gap-4">
+        <Link 
+          href="/admin/courses"
+          className="flex items-center gap-2 text-slate-400 hover:text-primary transition-colors font-bold text-sm"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back to Courses
+        </Link>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 bg-white shadow-xl shadow-primary/5 rounded-3xl flex items-center justify-center">
+              <BookOpen className="w-8 h-8 text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black text-primary uppercase tracking-[0.2em] mb-1">
+                <span>Course Config</span>
+              </div>
+              <h1 className="text-3xl font-black text-[#0f172a] tracking-tight">{course?.title}</h1>
+            </div>
+          </div>
+          <button 
+            onClick={() => setShowAddSubject(true)}
+            className="bg-primary text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:bg-[#152e75] hover:scale-[1.02] transition-all flex items-center gap-3 shrink-0"
+          >
+            <Plus className="w-6 h-6" />
+            Add Subject
+          </button>
+        </div>
+      </div>
+
+      {/* Subject List */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+            <h2 className="text-xl font-black text-[#0f172a] flex items-center gap-3">
+                <Library className="w-6 h-6 text-primary" />
+                Included Subjects ({subjects.length})
+            </h2>
+        </div>
+
+        {subjects.length === 0 ? (
+          <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl shadow-primary/5 p-20 text-center space-y-6">
+            <div className="w-24 h-24 bg-primary/5 rounded-[2.5rem] flex items-center justify-center mx-auto mb-4">
+              <HelpCircle className="w-12 h-12 text-primary translate-x-0.5" />
+            </div>
+            <h3 className="text-2xl font-black text-[#0f172a]">This course is empty</h3>
+            <p className="text-slate-500 max-w-sm mx-auto font-medium">Add your first subject to this course bundle to make it available for students.</p>
+            <button 
+              onClick={() => setShowAddSubject(true)}
+              className="bg-primary text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.05] transition-all"
+            >
+              Add First Subject
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {subjects.map((item) => (
+              <div key={item.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all group relative overflow-hidden">
+                <div className="flex justify-between items-start relative z-10 mb-4">
+                  <div className="p-4 bg-slate-50 rounded-2xl group-hover:bg-primary/5 group-hover:scale-110 transition-all">
+                    <Library className="w-6 h-6 text-primary" />
+                  </div>
+                  <button 
+                    onClick={() => handleRemoveSubject(item.subject_id)}
+                    className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-full transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                <div className="relative z-10">
+                  <div className="flex items-center gap-2 text-[10px] font-black text-primary uppercase tracking-widest mb-1">
+                    <span>{item.subjects?.categories?.name}</span>
+                  </div>
+                  <h4 className="text-xl font-black text-[#0f172a] mb-2">{item.subjects?.name}</h4>
+                </div>
+
+                <div className="flex items-center gap-4 mt-6 pt-6 border-t border-slate-50 relative z-10">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl">
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Content Ready</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
