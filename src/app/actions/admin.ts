@@ -592,15 +592,17 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
   // 1. Fetch limit and current count
   const { data: testData, error: testError } = await supabase
     .from('test_sets')
-    .select('questions_limit, current_count:test_questions(count)')
+    .select('target_questions, current_count:test_questions(count)')
     .eq('id', testSetId)
     .single()
   
   if (testError) return { error: 'Failed to fetch test settings' }
 
-  const limit = testData.questions_limit || 0;
+  const limit = testData.target_questions || 0;
   const currentCount = testData.current_count && testData.current_count[0] ? (testData.current_count[0] as any).count : 0;
-  const remainingCapacity = Math.max(0, limit - currentCount);
+  
+  // If target_questions is 0, it means no limit/unlimited capacity for the upload
+  const remainingCapacity = limit === 0 ? questions.length : Math.max(0, limit - currentCount);
 
   let finalQuestions = questions;
   let limitReached = false;

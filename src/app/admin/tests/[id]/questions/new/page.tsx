@@ -97,7 +97,7 @@ export default function AddQuestionPage() {
     setLoading(true)
     setError(null)
 
-    if (test?.questions_limit && (test?.question_count || 0) >= test.questions_limit) {
+    if (test?.target_questions && (test?.question_count || 0) >= test.target_questions) {
       setError('Question limit is exceed . If you want to add more question go to test setting and update the questions number.')
       setLoading(false)
       return

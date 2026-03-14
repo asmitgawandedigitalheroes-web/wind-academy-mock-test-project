@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-import { X, Clock, FileText, Layers, DollarSign, CheckCircle2 } from 'lucide-react'
+import { X, Clock, FileText, Layers, DollarSign, CheckCircle2, AlertCircle } from 'lucide-react'
 import { addTest } from '@/app/actions/admin'
+import Link from 'next/link'
 
 interface AddTestModalProps {
   moduleId: string
@@ -37,6 +38,9 @@ export default function AddTestModal({
 
   const freeCount = existingTests.filter(t => !t.is_paid).length
   const paidCount = existingTests.filter(t => t.is_paid).length
+  
+  const isLimitReached = !isPaid ? (freeCount >= freeLimit) : (paidCount >= paidLimit)
+  const remainingCount = !isPaid ? Math.max(0, freeLimit - freeCount) : Math.max(0, paidLimit - paidCount)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -104,17 +108,61 @@ export default function AddTestModal({
         )}
 
         <div className="grid grid-cols-2 gap-4">
-            <div className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${!isPaid ? 'border-primary bg-primary/5' : 'border-slate-100'}`} onClick={() => setIsPaid(false)}>
-                <p className="text-[0.6rem] font-black uppercase tracking-widest text-slate-400 mb-1">Testing Type</p>
-                <p className="font-black text-[#0f172a]">Free Test</p>
-                <p className="text-[0.65rem] text-slate-500 font-medium">({Math.max(0, freeLimit - freeCount)} remaining)</p>
+            <div 
+                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${!isPaid ? 'border-primary bg-primary/5' : 'border-slate-100 hover:bg-slate-50'}`} 
+                onClick={() => setIsPaid(false)}
+            >
+                <div className="flex justify-between items-start">
+                    <div>
+                        <p className="text-[0.6rem] font-black uppercase tracking-widest text-slate-400 mb-1">Testing Type</p>
+                        <p className="font-black text-[#0f172a]">Free Test</p>
+                    </div>
+                    {!isPaid && <CheckCircle2 className="w-4 h-4 text-primary" />}
+                </div>
+                <p className={`text-[0.65rem] font-bold mt-1 ${freeLimit - freeCount <= 0 ? 'text-red-500' : 'text-slate-500'}`}>
+                    ({Math.max(0, freeLimit - freeCount)} remaining)
+                </p>
             </div>
-            <div className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${isPaid ? 'border-primary bg-primary/5' : 'border-slate-100'}`} onClick={() => setIsPaid(true)}>
-                <p className="text-[0.6rem] font-black uppercase tracking-widest text-slate-400 mb-1">Testing Type</p>
-                <p className="font-black text-[#0f172a]">Paid Test</p>
-                <p className="text-[0.65rem] text-slate-500 font-medium">({Math.max(0, paidLimit - paidCount)} remaining)</p>
+            <div 
+                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${isPaid ? 'border-primary bg-primary/5' : 'border-slate-100 hover:bg-slate-50'}`} 
+                onClick={() => setIsPaid(true)}
+            >
+                <div className="flex justify-between items-start">
+                    <div>
+                        <p className="text-[0.6rem] font-black uppercase tracking-widest text-slate-400 mb-1">Testing Type</p>
+                        <p className="font-black text-[#0f172a]">Paid Test</p>
+                    </div>
+                    {isPaid && <CheckCircle2 className="w-4 h-4 text-primary" />}
+                </div>
+                <p className={`text-[0.65rem] font-bold mt-1 ${paidLimit - paidCount <= 0 ? 'text-red-500' : 'text-slate-500'}`}>
+                    ({Math.max(0, paidLimit - paidCount)} remaining)
+                </p>
             </div>
         </div>
+
+        {isLimitReached && (
+            <div className="p-4 bg-amber-50 border-2 border-amber-100 rounded-[1.5rem] animate-in slide-in-from-top-2 duration-300">
+                <div className="flex gap-3">
+                    <div className="p-2 bg-amber-100 text-amber-600 rounded-xl h-fit">
+                        <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <p className="text-amber-900 font-black text-sm">Limit Reached for {isPaid ? 'Paid' : 'Free'} Tests</p>
+                        <p className="text-amber-700 text-xs font-medium mt-1 leading-relaxed">
+                            This module is currently limited to {isPaid ? paidLimit : freeLimit} {isPaid ? 'paid' : 'free'} tests. 
+                            To add more, please increase the limit in the{' '}
+                            <Link 
+                                href={`/admin/modules/${moduleId}/settings`} 
+                                className="text-primary font-black hover:underline inline-flex items-center gap-0.5"
+                                replace
+                            >
+                                module settings
+                            </Link>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        )}
 
 {/* Temporarily hidden
         {isPaid && (
@@ -313,10 +361,10 @@ export default function AddTestModal({
           </button>
           <button
             type="submit"
-            disabled={loading}
-            className="flex-[2] py-4 px-6 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:bg-[#152e75] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            disabled={loading || isLimitReached}
+            className="flex-[2] py-4 px-6 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:bg-[#152e75] disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed transition-all"
           >
-            {loading ? 'Creating...' : 'Create Test Set'}
+            {loading ? 'Creating...' : isLimitReached ? 'Limit Reached' : 'Create Test Set'}
           </button>
         </div>
       </form>
