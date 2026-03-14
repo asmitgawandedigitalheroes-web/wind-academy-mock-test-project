@@ -125,8 +125,8 @@ export default function ModuleDetailPage() {
           <p className="text-2xl font-black text-[#0f172a]">{tests.reduce((acc, test) => acc + (test.question_count || 0), 0)}</p>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <p className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest mb-1">Average Time</p>
-          <p className="text-2xl font-black text-[#0f172a]">45m</p>
+          <p className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest mb-1">Students Taken</p>
+          <p className="text-2xl font-black text-primary">{tests.reduce((acc, test) => acc + (test.taken || 0), 0)}</p>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center group">
           <div>
@@ -228,6 +228,12 @@ export default function ModuleDetailPage() {
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{test.question_count || 0} Qs</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-xl">
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{test.taken || 0} Taken</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-100 rounded-xl">
+                    <span className="text-[10px] font-black text-green-600 uppercase tracking-widest">{test.passed || 0} Passed</span>
                   </div>
                 </div>
 

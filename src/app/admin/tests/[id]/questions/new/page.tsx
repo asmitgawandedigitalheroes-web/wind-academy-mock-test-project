@@ -97,7 +97,13 @@ export default function AddQuestionPage() {
     setLoading(true)
     setError(null)
 
-    if (options.some(opt => !opt.trim())) {
+    if (test?.questions_limit && (test?.question_count || 0) >= test.questions_limit) {
+      setError('Question limit is exceed . If you want to add more question go to test setting and update the questions number.')
+      setLoading(false)
+      return
+    }
+
+    if (options.some(opt => !String(opt || '').trim())) {
       setError('Please fill in all options')
       setLoading(false)
       return

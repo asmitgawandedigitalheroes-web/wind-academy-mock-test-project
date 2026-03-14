@@ -115,25 +115,70 @@ export async function getModulesWithCategories() {
     const supabase = await createClient()
     const { data } = await supabase
         .from('modules')
-        .select('id, name, status, categories(id, name)')
+        .select(`
+            id, 
+            name, 
+            status, 
+            categories(id, name),
+            test_sets(
+                id,
+                test_results(id, score, test_sets(pass_percentage))
+            ),
+            questions(count)
+        `)
         .order('name')
-    return (data || []) as any[]
+
+    // Aggregate stats from test_sets
+    const modulesWithStats = (data || []).map(module => {
+        let totalTaken = 0;
+        let totalPassed = 0;
+
+        module.test_sets?.forEach((test: any) => {
+            const results = test.test_results || [];
+            const passMark = test.pass_percentage || 70;
+            totalTaken += results.length;
+            totalPassed += results.filter((r: any) => r.score >= passMark).length;
+        });
+
+        return {
+            ...module,
+            taken: totalTaken,
+            passed: totalPassed,
+            test_count: module.test_sets?.length || 0,
+            question_count: module.questions && module.questions[0] ? (module.questions[0] as any).count : 0
+        };
+    });
+
+    return modulesWithStats as any[]
 }
 export async function getTestsByModule(moduleId: string) {
     const supabase = await createClient()
     const { data } = await supabase
         .from('test_sets')
-        .select('*, question_count:test_questions(count)')
+        .select(`
+            *,
+            question_count:test_questions(count),
+            test_results(id, score, test_sets(pass_percentage))
+        `)
         .eq('module_id', moduleId)
         .order('created_at', { ascending: false })
     
-    // Transform the data to pull the count out of the array/object
-    const testsWithCounts = (data || []).map(test => ({
-        ...test,
-        question_count: test.question_count && test.question_count[0] ? (test.question_count[0] as any).count : 0
-    }))
+    // Transform the data to pull counts and stats
+    const testsWithStats = (data || []).map(test => {
+        const results = test.test_results || [];
+        const passMark = test.pass_percentage || 70;
+        const taken = results.length;
+        const passed = results.filter((r: any) => r.score >= passMark).length;
 
-    return testsWithCounts
+        return {
+            ...test,
+            question_count: test.question_count && test.question_count[0] ? (test.question_count[0] as any).count : 0,
+            taken,
+            passed
+        };
+    });
+
+    return testsWithStats
 }
 
 export async function addTest(formData: { 
@@ -389,9 +434,18 @@ export async function getTestDetails(testId: string) {
     const supabase = await createClient()
     const { data } = await supabase
         .from('test_sets')
-        .select('*, modules(id, name, categories(name))')
+        .select('*, modules(id, name, categories(name)), test_results(id, score), question_count:test_questions(count)')
         .eq('id', testId)
         .single()
+    
+    if (data) {
+        const results = data.test_results || [];
+        const passMark = data.pass_percentage || 70;
+        data.taken = results.length;
+        data.passed = results.filter((r: any) => r.score >= passMark).length;
+        data.question_count = data.question_count && data.question_count[0] ? (data.question_count[0] as any).count : 0;
+    }
+
     return data
 }
 
@@ -535,11 +589,42 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
   
   if (!questions || questions.length === 0) return { error: 'No questions provided' }
 
+  // 1. Fetch limit and current count
+  const { data: testData, error: testError } = await supabase
+    .from('test_sets')
+    .select('questions_limit, current_count:test_questions(count)')
+    .eq('id', testSetId)
+    .single()
+  
+  if (testError) return { error: 'Failed to fetch test settings' }
+
+  const limit = testData.questions_limit || 0;
+  const currentCount = testData.current_count && testData.current_count[0] ? (testData.current_count[0] as any).count : 0;
+  const remainingCapacity = Math.max(0, limit - currentCount);
+
+  let finalQuestions = questions;
+  let limitReached = false;
+  let skippedCount = 0;
+
+  if (questions.length > remainingCapacity) {
+    limitReached = true;
+    skippedCount = questions.length - remainingCapacity;
+    finalQuestions = questions.slice(0, remainingCapacity);
+  }
+
+  if (finalQuestions.length === 0 && questions.length > 0) {
+    return { 
+      error: 'Question limit reached. No more questions can be added to this test.',
+      limitReached: true,
+      skippedCount: questions.length
+    }
+  }
+
   let successCount = 0
   let errorCount = 0
   let lastError = null
 
-  for (const q of questions) {
+  for (const q of finalQuestions) {
     try {
       // Robust field mapping
       const qText = q.question_text || q.Question || q.question;
@@ -547,13 +632,15 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
       
       // Map options A-E, being careful about case sensitivity
       const rawOptions = [
-        q.option_a || q.OptionA || q.A,
-        q.option_b || q.OptionB || q.B,
-        q.option_c || q.OptionC || q.C,
-        q.option_d || q.OptionD || q.D,
-        q.option_e || q.OptionE || q.E
+        q.option_a ?? q.OptionA ?? q.A,
+        q.option_b ?? q.OptionB ?? q.B,
+        q.option_c ?? q.OptionC ?? q.C,
+        q.option_d ?? q.OptionD ?? q.D,
+        q.option_e ?? q.OptionE ?? q.E
       ];
-      const options = rawOptions.filter(o => o !== undefined && o !== null && String(o).trim() !== '');
+      const options = rawOptions
+        .filter(o => o !== undefined && o !== null && String(o).trim() !== '')
+        .map(o => String(o));
 
       const correctStr = String(q.correct_answer || q.CorrectAnswer || q.correct_options || '');
       const difficulty = (String(q.difficulty || q.Difficulty || 'medium')).toLowerCase() as 'easy' | 'medium' | 'hard';
@@ -637,7 +724,14 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
   }
 
   revalidatePath(`/admin/tests/${testSetId}`)
-  return { success: true, successCount, errorCount, lastError }
+  return { 
+    success: true, 
+    successCount, 
+    errorCount, 
+    lastError,
+    limitReached,
+    skippedCount
+  }
 }
 
 export async function updateUserStatus(userId: string, status: 'active' | 'suspended') {
@@ -741,10 +835,20 @@ export async function getAllTests() {
       modules (
         id,
         name
-      )
+      ),
+      test_results(id, score)
     `)
     .order('created_at', { ascending: false })
   
+  if (data) {
+    data.forEach((test: any) => {
+        const results = test.test_results || [];
+        const passMark = test.pass_percentage || 70;
+        test.taken = results.length;
+        test.passed = results.filter((r: any) => r.score >= passMark).length;
+    });
+  }
+
   return data || []
 }
 export async function updateModuleSettings(moduleId: string, data: {
@@ -1052,4 +1156,87 @@ export async function flushPlatformCache() {
     console.error('Error flushing cache:', error)
     return { error: error.message || 'Failed to flush cache' }
   }
+}
+export async function getTestCompletions(testId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('test_results')
+    .select(`
+      id,
+      score,
+      completed_at,
+      profiles (
+        full_name,
+        email
+      )
+    `)
+    .eq('test_set_id', testId)
+    .order('completed_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching test completions:', error)
+    return { error: error.message }
+  }
+
+  return { success: true, data: data || [] }
+}
+
+export async function getModuleCompletions(moduleId: string) {
+  const supabase = await createClient()
+  
+  // First get all tests in the module
+  const { data: tests } = await supabase
+    .from('test_sets')
+    .select('id')
+    .eq('module_id', moduleId)
+  
+  const testIds = (tests || []).map(t => t.id)
+  
+  if (testIds.length === 0) return { success: true, data: [] }
+
+  const { data, error } = await supabase
+    .from('test_results')
+    .select(`
+      id,
+      score,
+      completed_at,
+      profiles (
+        id,
+        full_name,
+        email
+      )
+    `)
+    .in('test_set_id', testIds)
+    .order('completed_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching module completions:', error)
+    return { error: error.message }
+  }
+
+  // Aggregate by student to show unique students
+  const studentMap = new Map<string, any>()
+  
+  data?.forEach((res: any) => {
+    const studentId = res.profiles?.id
+    if (!studentId) return
+
+    if (!studentMap.has(studentId)) {
+      studentMap.set(studentId, {
+        profile: res.profiles,
+        testsCompleted: 0,
+        lastAttempt: res.completed_at,
+        bestScore: res.score
+      })
+    }
+    
+    const stats = studentMap.get(studentId)
+    stats.testsCompleted += 1
+    if (res.score > stats.bestScore) stats.bestScore = res.score
+    if (new Date(res.completed_at) > new Date(stats.lastAttempt)) {
+      stats.lastAttempt = res.completed_at
+    }
+  })
+
+  return { success: true, data: Array.from(studentMap.values()) }
 }

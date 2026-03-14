@@ -17,10 +17,11 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { getStats, getCategories, getModulesWithCategories, deleteModule, toggleModuleStatus } from '@/app/actions/admin'
+import { getStats, getCategories, getModulesWithCategories, deleteModule, toggleModuleStatus, getModuleCompletions } from '@/app/actions/admin'
 import AddModuleForm from '@/components/admin/questions/AddModuleForm'
 import AddQuestionForm from '@/components/admin/questions/AddQuestionForm'
 import ConfirmationModal from '@/components/common/ConfirmationModal'
+import CompletionListModal from '@/components/admin/CompletionListModal'
 
 export default function ModuleManager() {
   const [showModuleForm, setShowModuleForm] = useState(false)
@@ -31,6 +32,19 @@ export default function ModuleManager() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [moduleToDelete, setModuleToDelete] = useState<any | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [completionModal, setCompletionModal] = useState<{
+    isOpen: boolean
+    title: string
+    subtitle: string
+    data: any[]
+    loading: boolean
+  }>({
+    isOpen: false,
+    title: '',
+    subtitle: '',
+    data: [],
+    loading: false
+  })
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   const fetchData = async () => {
@@ -81,9 +95,39 @@ export default function ModuleManager() {
     setDeleteLoading(false)
   }
 
+  const handleShowCompletions = async (e: React.MouseEvent, module: any) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    setCompletionModal({
+      isOpen: true,
+      title: 'Module Completions',
+      subtitle: `Students who have taken tests in ${module.name}`,
+      data: [],
+      loading: true
+    })
+
+    const res = await getModuleCompletions(module.id)
+    if (res.success) {
+      setCompletionModal(prev => ({
+        ...prev,
+        data: res.data || [],
+        loading: false
+      }))
+    } else {
+      setCompletionModal(prev => ({ ...prev, loading: false }))
+    }
+  }
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative">
       {/* Modals */}
+      <CompletionListModal
+        {...completionModal}
+        onClose={() => setCompletionModal(prev => ({ ...prev, isOpen: false }))}
+        type="module"
+      />
+
       {(showModuleForm || showQuestionForm) && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
             {showModuleForm && (
@@ -157,9 +201,42 @@ export default function ModuleManager() {
 
                   <div>
                      <h3 className="text-lg font-black text-[#0f172a] mb-2 capitalize">{module.name}</h3>
+                      <div className="grid grid-cols-2 gap-y-4 mt-6 pt-4 border-t border-slate-50">
+                          {/* Participation Stats - Left column */}
+                          <div className="space-y-4">
+                              <button 
+                                onClick={(e) => handleShowCompletions(e, module)}
+                                className="flex flex-col items-start p-2 rounded-xl hover:bg-primary/5 transition-all group/stat w-full"
+                              >
+                                <span className={`text-sm font-black transition-colors ${module.taken > 0 ? 'text-primary' : 'text-slate-900'}`}>{module.taken || 0}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest group-hover/stat:text-primary transition-colors">Taken</span>
+                              </button>
+                              
+                              <div className="flex flex-col items-start p-2">
+                                  <span className="text-sm font-black text-slate-900">{module.test_count || 0}</span>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tests</span>
+                              </div>
+                          </div>
+
+                          {/* Success & Content Stats - Right column with border */}
+                          <div className="space-y-4 border-l border-slate-100 pl-4">
+                              <button 
+                                onClick={(e) => handleShowCompletions(e, module)}
+                                className="flex flex-col items-start p-2 rounded-xl hover:bg-green-50 transition-all group/stat w-full"
+                              >
+                                <span className={`text-sm font-black transition-colors ${module.passed > 0 ? 'text-green-600' : 'text-slate-900'}`}>{module.passed || 0}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest group-hover/stat:text-green-600 transition-colors">Passed</span>
+                              </button>
+
+                              <div className="flex flex-col items-start p-2">
+                                  <span className="text-sm font-black text-slate-900">{module.question_count || 0}</span>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Questions</span>
+                              </div>
+                          </div>
+                      </div>
                   </div>
                   
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mt-4 pt-4 border-t border-slate-50 group-hover:border-slate-100 transition-colors">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mt-6 pt-4 border-t border-slate-50 group-hover:border-slate-100 transition-colors">
                       <FileText className="w-3.5 h-3.5" />
                       <span>View Tests</span>
                   </div>

@@ -16,8 +16,9 @@ import {
   LayoutGrid
 } from 'lucide-react'
 import Link from 'next/link'
-import { getAllTests, deleteTestSet, toggleTestStatus } from '@/app/actions/admin'
+import { getAllTests, deleteTestSet, toggleTestStatus, getTestCompletions } from '@/app/actions/admin'
 import ConfirmationModal from '@/components/common/ConfirmationModal'
+import CompletionListModal from '@/components/admin/CompletionListModal'
 
 export default function TestsManagementPage() {
   const [tests, setTests] = useState<any[]>([])
@@ -28,6 +29,21 @@ export default function TestsManagementPage() {
     isOpen: false,
     id: '',
     moduleId: ''
+  })
+
+  // Completion List Modal State
+  const [completionModal, setCompletionModal] = useState<{
+    isOpen: boolean
+    title: string
+    subtitle: string
+    data: any[]
+    loading: boolean
+  }>({
+    isOpen: false,
+    title: '',
+    subtitle: '',
+    data: [],
+    loading: false
   })
 
   useEffect(() => {
@@ -57,6 +73,27 @@ export default function TestsManagementPage() {
     setDeleteModal({ isOpen: false, id: '', moduleId: '' })
   }
 
+  const handleShowCompletions = async (test: any) => {
+    setCompletionModal({
+      isOpen: true,
+      title: 'Student Completions',
+      subtitle: `Students who completed ${test.title}`,
+      data: [],
+      loading: true
+    })
+
+    const res = await getTestCompletions(test.id)
+    if (res.success) {
+      setCompletionModal(prev => ({
+        ...prev,
+        data: res.data || [],
+        loading: false
+      }))
+    } else {
+      setCompletionModal(prev => ({ ...prev, loading: false }))
+    }
+  }
+
   const filteredTests = tests.filter(test => {
     const matchesSearch = test.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (test.modules?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -68,6 +105,12 @@ export default function TestsManagementPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      <CompletionListModal
+        {...completionModal}
+        onClose={() => setCompletionModal(prev => ({ ...prev, isOpen: false }))}
+        type="test"
+      />
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-4xl font-black text-[#0f172a] tracking-tight">Mock Tests</h1>
@@ -118,6 +161,8 @@ export default function TestsManagementPage() {
               <tr className="bg-slate-50/50">
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Test Details</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Pricing</th>
+                <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Taken</th>
+                <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Passed</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Status</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Actions</th>
               </tr>
@@ -170,6 +215,24 @@ export default function TestsManagementPage() {
                           Free
                         </span>
                       )}
+                    </td>
+                    <td className="px-8 py-6 text-center">
+                      <button 
+                        onClick={() => handleShowCompletions(test)}
+                        className="flex flex-col items-center mx-auto group/stat hover:scale-105 active:scale-95 transition-all"
+                      >
+                        <span className={`text-sm font-black transition-colors ${test.taken > 0 ? 'text-primary' : 'text-[#0f172a]'}`}>{test.taken || 0}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover/stat:text-primary transition-colors">Students</span>
+                      </button>
+                    </td>
+                    <td className="px-8 py-6 text-center">
+                      <button 
+                        onClick={() => handleShowCompletions(test)}
+                        className="flex flex-col items-center mx-auto group/stat hover:scale-105 active:scale-95 transition-all"
+                      >
+                        <span className={`text-sm font-black transition-colors ${test.passed > 0 ? 'text-green-600' : 'text-[#0f172a]'}`}>{test.passed || 0}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover/stat:text-green-600 transition-colors">Cleared</span>
+                      </button>
                     </td>
                     <td className="px-8 py-6">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.65rem] font-black uppercase tracking-wider ${test.status === 'published' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
@@ -240,14 +303,24 @@ export default function TestsManagementPage() {
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                <div className="grid grid-cols-3 gap-2 flex-1">
+                  <button 
+                    onClick={() => handleShowCompletions(test)}
+                    className="flex flex-col items-center p-2 rounded-xl hover:bg-primary/5 transition-colors text-left"
+                  >
+                    <p className="text-[0.6rem] font-black text-slate-400 uppercase tracking-widest mb-0.5">Taken</p>
+                    <p className="text-sm font-black text-[#0f172a]">{test.taken || 0}</p>
+                  </button>
+                  <button 
+                    onClick={() => handleShowCompletions(test)}
+                    className="flex flex-col items-center p-2 rounded-xl hover:bg-green-50 transition-colors text-left"
+                  >
+                    <p className="text-[0.6rem] font-black text-slate-400 uppercase tracking-widest mb-0.5">Passed</p>
+                    <p className="text-sm font-black text-green-600">{test.passed || 0}</p>
+                  </button>
+                  <div className="flex flex-col items-center p-2">
                     <p className="text-[0.6rem] font-black text-slate-400 uppercase tracking-widest mb-0.5">Price</p>
                     <p className="text-sm font-black text-primary">{test.is_paid ? `₹${test.price}` : 'Free'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[0.6rem] font-black text-slate-400 uppercase tracking-widest mb-0.5">Pass Mark</p>
-                    <p className="text-sm font-black text-slate-600">{test.pass_percentage || 70}%</p>
                   </div>
                 </div>
 

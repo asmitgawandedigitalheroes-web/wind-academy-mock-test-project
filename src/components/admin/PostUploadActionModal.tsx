@@ -9,6 +9,8 @@ interface PostUploadActionModalProps {
   onPublishNow: () => void
   onSchedule: (date: string) => void
   questionCount: number
+  limitReached?: boolean
+  skippedCount?: number
 }
 
 export default function PostUploadActionModal({
@@ -16,7 +18,9 @@ export default function PostUploadActionModal({
   onClose,
   onPublishNow,
   onSchedule,
-  questionCount
+  questionCount,
+  limitReached,
+  skippedCount
 }: PostUploadActionModalProps) {
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState('')
@@ -44,10 +48,16 @@ export default function PostUploadActionModal({
         <div className="p-10 space-y-8">
           <div className="space-y-3">
             <h3 className="text-3xl font-black text-[#0f172a] leading-tight">
-              {questionCount} Questions Uploaded!
+              {limitReached ? `${questionCount} Questions Uploaded!` : `${questionCount} Questions Uploaded!`}
             </h3>
             <p className="text-slate-500 font-medium leading-relaxed italic">
-              Success! Your questions are now part of this test set. Would you like to make it live for students now?
+              {limitReached ? (
+                <>
+                  {questionCount} questions are uploaded remaining {skippedCount} is failed due to question limit. If you want to add more then go to setting and upload the questions
+                </>
+              ) : (
+                "Success! Your questions are now part of this test set. Would you like to make it live for students now?"
+              )}
             </p>
           </div>
 
