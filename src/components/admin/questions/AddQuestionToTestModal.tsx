@@ -21,7 +21,11 @@ export default function AddQuestionToTestModal({
 }: AddQuestionToTestModalProps) {
   const [questionText, setQuestionText] = useState(initialData?.question_text || '')
   const [questionType, setQuestionType] = useState<'single' | 'multiple'>(initialData?.question_type || 'single')
-  const [options, setOptions] = useState<string[]>(initialData?.options || ['', '', '', ''])
+  const [options, setOptions] = useState<string[]>(
+    initialData?.options 
+      ? initialData.options.map((opt: any) => String(opt || '')) 
+      : ['', '', '', '']
+  )
   const [correctOptions, setCorrectOptions] = useState<number[]>(
     initialData?.correct_options ? initialData.correct_options :
     (initialData?.correct_option_index !== undefined && initialData?.correct_option_index !== null ? [initialData.correct_option_index] : [0])
@@ -66,7 +70,7 @@ export default function AddQuestionToTestModal({
     setLoading(true)
     setError(null)
 
-    if (options.some(opt => !opt.trim())) {
+    if (options.some(opt => !String(opt || '').trim())) {
       setError('Please fill in all options')
       setLoading(false)
       return

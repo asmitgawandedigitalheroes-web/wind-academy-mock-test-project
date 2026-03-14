@@ -55,7 +55,7 @@ export default function EditQuestionPage() {
       if (questionData) {
         setQuestionText(questionData.question_text || '')
         setQuestionType(questionData.question_type || 'single')
-        setOptions(questionData.options || ['', '', '', ''])
+        setOptions((questionData.options || ['', '', '', '']).map((opt: any) => String(opt || '')))
         setCorrectOptions(
           questionData.correct_options ? questionData.correct_options :
           (questionData.correct_option_index !== undefined && questionData.correct_option_index !== null ? [questionData.correct_option_index] : [0])
@@ -115,7 +115,7 @@ export default function EditQuestionPage() {
     setLoading(true)
     setError(null)
 
-    if (options.some(opt => !opt.trim())) {
+    if (options.some(opt => !String(opt || '').trim())) {
       setError('Please fill in all options')
       setLoading(false)
       return

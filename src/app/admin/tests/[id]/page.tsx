@@ -19,7 +19,11 @@ import {
   Eye,
   Settings,
   Star,
-  MoreVertical
+  MoreVertical,
+  Loader2,
+  Target,
+  Award,
+  Clock
 } from 'lucide-react'
 import Link from 'next/link'
 import BackButton from '@/components/common/BackButton'
@@ -55,7 +59,13 @@ export default function TestQuestionsPage() {
   })
 
   const [uploadSuccessCount, setUploadSuccessCount] = useState(0)
+  const [uploadLimitInfo, setUploadLimitInfo] = useState<{ limitReached: boolean, skippedCount: number }>({
+    limitReached: false,
+    skippedCount: 0
+  })
   const [isPostUploadModalOpen, setIsPostUploadModalOpen] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false)
 
   const handleEdit = (question: any) => {
     router.push(`/admin/tests/${id}/questions/${question.id}/edit`)
@@ -79,6 +89,26 @@ export default function TestQuestionsPage() {
     }
   }
 
+  const totalMarks = questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0)
+
+  const handleManualAdd = () => {
+    if (questions.length >= (test?.questions_limit || 0)) {
+      setModalConfig({
+        isOpen: true,
+        title: 'Limit Exceeded',
+        message: 'Question limit is exceed . If you want to add more question go to test setting and update the questions number.',
+        type: 'info',
+        confirmLabel: 'Go to Settings',
+        onConfirm: () => {
+          setModalConfig(prev => ({ ...prev, isOpen: false }));
+          router.push(`/admin/tests/${id}/settings`);
+        }
+      });
+      return;
+    }
+    router.push(`/admin/tests/${id}/questions/new`);
+  }
+
   const handleDelete = async (questionId: string) => {
     setModalConfig({
       isOpen: true,
@@ -100,12 +130,15 @@ export default function TestQuestionsPage() {
 
   const handleToggleStatus = async () => {
     try {
+      setIsTogglingStatus(true)
       const res = await toggleTestStatus(id, test?.module_id, test?.status || 'draft')
       if (res.success) {
-        fetchData()
+        await fetchData()
       }
     } catch (err) {
       console.error(err)
+    } finally {
+      setIsTogglingStatus(false)
     }
   }
 
@@ -176,6 +209,8 @@ export default function TestQuestionsPage() {
         onPublishNow={handlePublishNow}
         onSchedule={handleSchedule}
         questionCount={uploadSuccessCount}
+        limitReached={uploadLimitInfo.limitReached}
+        skippedCount={uploadLimitInfo.skippedCount}
       />
 
       <BackButton variant="ghost" className="-ml-3" />
@@ -201,13 +236,15 @@ export default function TestQuestionsPage() {
                   <span className="text-slate-200">•</span>
                   <button
                     onClick={handleToggleStatus}
-                    disabled={loading}
+                    disabled={loading || isTogglingStatus}
                     className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-black text-[0.65rem] uppercase tracking-widest transition-all border ${test?.status === 'published'
                       ? 'bg-green-50 border-green-200 text-green-600 hover:bg-green-100'
                       : 'bg-accent/10 border-accent/20 text-accent hover:bg-accent/20'
-                      }`}
+                      } ${isTogglingStatus ? 'opacity-70 pointer-events-none' : ''}`}
                   >
-                    {test?.status === 'published' ? (
+                    {isTogglingStatus ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" /> Updating...</>
+                    ) : test?.status === 'published' ? (
                       <><Eye className="w-3 h-3" /> Published</>
                     ) : (
                       <><EyeOff className="w-3 h-3" /> Draft</>
@@ -226,9 +263,13 @@ export default function TestQuestionsPage() {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 shrink-0">
-            <label className="cursor-pointer bg-white border-2 border-slate-200 text-[#0f172a] px-8 py-4 rounded-2xl font-black shadow-lg shadow-slate-200/50 hover:bg-slate-50 hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-3 whitespace-nowrap">
-              <UploadCloud className="w-6 h-6 shrink-0" />
-              {loading && !test ? 'Uploading...' : 'Upload Excel/CSV'}
+            <label className={`cursor-pointer bg-white border-2 border-slate-200 text-[#0f172a] px-8 py-4 rounded-2xl font-black shadow-lg shadow-slate-200/50 hover:bg-slate-50 hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-3 whitespace-nowrap ${isUploading ? 'opacity-70 pointer-events-none' : ''}`}>
+              {isUploading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              ) : (
+                <UploadCloud className="w-6 h-6 shrink-0" />
+              )}
+              {isUploading ? 'Uploading Questions...' : 'Upload Excel/CSV'}
               <input
                 type="file"
                 accept=".csv,.xlsx,.xls"
@@ -237,6 +278,7 @@ export default function TestQuestionsPage() {
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) {
+                    setIsUploading(true);
                     setLoading(true);
                     const reader = new FileReader();
                     reader.onload = async (event) => {
@@ -253,6 +295,10 @@ export default function TestQuestionsPage() {
                         const result = await bulkUploadQuestions(id, test?.module_id, plainJson);
                         if (result.success) {
                           setUploadSuccessCount(result.successCount)
+                          setUploadLimitInfo({
+                            limitReached: !!result.limitReached,
+                            skippedCount: result.skippedCount || 0
+                          })
                           setIsPostUploadModalOpen(true)
                           fetchData();
                         } else {
@@ -277,6 +323,7 @@ export default function TestQuestionsPage() {
                         });
                       } finally {
                         setLoading(false);
+                        setIsUploading(false);
                       }
                     };
                     reader.readAsBinaryString(file);
@@ -293,7 +340,7 @@ export default function TestQuestionsPage() {
               Download Excel Template
             </a>
             <button
-              onClick={() => router.push(`/admin/tests/${id}/questions/new`)}
+              onClick={handleManualAdd}
               className="bg-primary text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:bg-[#152e75] hover:scale-[1.02] transition-all flex items-center justify-center gap-3 whitespace-nowrap"
             >
               <Plus className="w-6 h-6 shrink-0" />
@@ -301,6 +348,61 @@ export default function TestQuestionsPage() {
             </button>
           </div>
         </div>
+      </div>
+      
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        <Link 
+          href={`/admin/tests/${id}/settings`}
+          className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xl shadow-primary/5 hover:border-primary/20 hover:shadow-primary/10 transition-all group flex items-center gap-4"
+        >
+          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-all text-primary">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Total Questions</p>
+            <p className="text-xl font-black text-[#0f172a]">{questions.length}</p>
+          </div>
+        </Link>
+
+        <Link 
+          href={`/admin/tests/${id}/settings`}
+          className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xl shadow-primary/5 hover:border-primary/20 hover:shadow-primary/10 transition-all group flex items-center gap-4"
+        >
+          <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all text-amber-500">
+            <Target className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Questions Limit</p>
+            <p className="text-xl font-black text-[#0f172a]">{test?.target_questions || 0}</p>
+          </div>
+        </Link>
+
+        <Link 
+          href={`/admin/tests/${id}/settings`}
+          className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xl shadow-primary/5 hover:border-primary/20 hover:shadow-primary/10 transition-all group flex items-center gap-4"
+        >
+          <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center group-hover:bg-green-500 group-hover:text-white transition-all text-green-500">
+            <Award className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Total Marks</p>
+            <p className="text-xl font-black text-[#0f172a]">{totalMarks}</p>
+          </div>
+        </Link>
+
+        <Link 
+          href={`/admin/tests/${id}/settings`}
+          className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xl shadow-primary/5 hover:border-primary/20 hover:shadow-primary/10 transition-all group flex items-center gap-4"
+        >
+          <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center group-hover:bg-purple-500 group-hover:text-white transition-all text-purple-500">
+            <Clock className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Time Limit</p>
+            <p className="text-xl font-black text-[#0f172a]">{test?.time_limit_minutes || 0}m</p>
+          </div>
+        </Link>
       </div>
 
       {/* Questions Stack */}
@@ -354,7 +456,7 @@ export default function TestQuestionsPage() {
                         </div>
                         <p className="text-base md:text-lg font-bold text-[#0f172a] leading-relaxed first-letter:uppercase">{q.question_text}</p>
                         {q.image_url && (
-                          <div className="mt-4 w-full max-w-lg aspect-video rounded-2xl md:rounded-3xl overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
+                          <div className="mt-4 w-[100px] h-[100px] rounded-xl overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
                             <img src={q.image_url} alt="Question" className="w-full h-full object-contain" />
                           </div>
                         )}
