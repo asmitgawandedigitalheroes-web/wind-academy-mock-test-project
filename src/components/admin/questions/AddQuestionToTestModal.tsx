@@ -6,7 +6,7 @@ import { addQuestionToTest, updateQuestion } from '@/app/actions/admin'
 
 interface AddQuestionToTestModalProps {
   testSetId: string
-  subjectId: string
+  moduleId: string
   initialData?: any
   onCancel: () => void
   onSuccess: () => void
@@ -14,7 +14,7 @@ interface AddQuestionToTestModalProps {
 
 export default function AddQuestionToTestModal({ 
   testSetId, 
-  subjectId,
+  moduleId,
   initialData,
   onCancel, 
   onSuccess 
@@ -95,7 +95,7 @@ export default function AddQuestionToTestModal({
       } else {
         result = await addQuestionToTest({
           testSetId,
-          subjectId,
+          moduleId,
           ...payload
         })
       }
