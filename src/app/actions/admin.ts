@@ -32,6 +32,17 @@ export async function addModule(formData: {
     return { error: error.message }
   }
 
+  // Add notification
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      type: 'admin_action',
+      title: 'Module Created',
+      message: `New module "${formData.name}" has been successfully added.`
+    })
+  }
+
   revalidatePath('/admin/questions')
   return { success: true }
 }
@@ -219,8 +230,68 @@ export async function addTest(formData: {
     return { error: error.message }
   }
 
+  // Add notification
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      type: 'admin_action',
+      title: 'Test Created',
+      message: `New test "${formData.title}" has been successfully created.`
+    })
+  }
+
   revalidatePath(`/admin/modules/${formData.moduleId}`)
   return { success: true }
+}
+
+export async function duplicateTestSet(testId: string, moduleId: string) {
+  const supabase = await createClient()
+
+  // Get original test details
+  const { data: original, error: fetchError } = await supabase
+    .from('test_sets')
+    .select('*')
+    .eq('id', testId)
+    .single()
+
+  if (fetchError || !original) {
+    console.error('Error fetching original test:', fetchError)
+    return { error: 'Failed to fetch original test' }
+  }
+
+  // Prepare new test data
+  const { id: _, created_at: __, ...settings } = original
+  const newTitle = `Copy - ${original.title}`
+
+  const { data: newTest, error: insertError } = await supabase
+    .from('test_sets')
+    .insert([{
+      ...settings,
+      title: newTitle,
+      status: 'draft' // Always start as draft
+    }])
+    .select()
+    .single()
+
+  if (insertError) {
+    console.error('Error duplicating test:', insertError)
+    return { error: insertError.message }
+  }
+
+  // Add notification
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      type: 'admin_action',
+      title: 'Test Duplicated',
+      message: `Test "${original.title}" has been duplicated as "${newTitle}".`
+    })
+  }
+
+  revalidatePath(`/admin/modules/${moduleId}`)
+  return { success: true, newTestId: newTest.id }
 }
 
 export async function updateTestSettings(testId: string, moduleId: string, data: {
@@ -400,6 +471,19 @@ export async function addQuestionToTest(formData: {
   if (linkError) {
     console.error('Error linking question to test:', linkError)
     return { error: linkError.message }
+  }
+
+  // Add notification
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    // Get test title for better message
+    const { data: testInfo } = await supabase.from('test_sets').select('title').eq('id', formData.testSetId).single()
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      type: 'admin_action',
+      title: 'Question Added',
+      message: `A new question was added to "${testInfo?.title || 'a test'}".`
+    })
   }
 
   revalidatePath(`/admin/tests/${formData.testSetId}`)
@@ -723,6 +807,17 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
       lastError = err?.message || 'Unknown error'
       errorCount++
     }
+  }
+
+  // Add notification
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user && successCount > 0) {
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      type: 'admin_action',
+      title: 'Bulk Upload Successful',
+      message: `Successfully uploaded ${successCount} questions to the test.`
+    })
   }
 
   revalidatePath(`/admin/tests/${testSetId}`)
@@ -1241,4 +1336,47 @@ export async function getModuleCompletions(moduleId: string) {
   })
 
   return { success: true, data: Array.from(studentMap.values()) }
+}
+
+export async function forceLogoutUser(userId: string) {
+  const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { error } = await supabaseAdmin.auth.admin.signOut(userId, 'global')
+
+  if (error) {
+    console.error('Error force logging out user:', error)
+    return { error: error.message }
+  }
+
+  return { success: true }
+}
+
+export async function checkDatabaseHealth() {
+  const supabase = await createClient()
+  const start = Date.now()
+  
+  try {
+    const { data, error } = await supabase.from('profiles').select('id').limit(1)
+    const end = Date.now()
+    
+    if (error) throw error
+    
+    return { 
+      success: true, 
+      latency: `${end - start}ms`,
+      status: 'Operational',
+      timestamp: new Date().toISOString()
+    }
+  } catch (err: any) {
+    console.error('Database health check failed:', err)
+    return { 
+      success: false, 
+      error: err.message || 'Database connection error',
+      status: 'Down',
+      timestamp: new Date().toISOString()
+    }
+  }
 }

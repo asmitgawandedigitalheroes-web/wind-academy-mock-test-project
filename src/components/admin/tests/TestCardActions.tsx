@@ -9,9 +9,10 @@ import {
   Unlock, 
   Trash2,
   AlertCircle,
-  Settings
+  Settings,
+  Copy
 } from 'lucide-react'
-import { toggleTestStatus, toggleTestPaid, deleteTestSet } from '@/app/actions/admin'
+import { toggleTestStatus, toggleTestPaid, deleteTestSet, duplicateTestSet } from '@/app/actions/admin'
 import ConfirmationModal from '@/components/common/ConfirmationModal'
 import Link from 'next/link'
 
@@ -132,6 +133,24 @@ export default function TestCardActions({ test, moduleId, onRefresh }: TestCardA
     setIsOpen(false)
   }
 
+  const handleDuplicate = async () => {
+    setLoading(true)
+    const res = await duplicateTestSet(test.id, moduleId)
+    if (res.error) {
+      setModalConfig({
+        isOpen: true,
+        title: 'Error',
+        message: res.error,
+        type: 'danger',
+        confirmLabel: 'Close',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      })
+    }
+    setIsOpen(false)
+    setLoading(false)
+    onRefresh()
+  }
+
   const handleDelete = () => {
     setModalConfig({
       isOpen: true,
@@ -186,6 +205,14 @@ export default function TestCardActions({ test, moduleId, onRefresh }: TestCardA
             <Settings className="w-4 h-4" />
             Edit Settings
           </Link>
+
+          <button 
+            onClick={handleDuplicate}
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors text-left"
+          >
+            <Copy className="w-4 h-4" />
+            Duplicate Test
+          </button>
 
           <button 
             onClick={handleToggleStatus}

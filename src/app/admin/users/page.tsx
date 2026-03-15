@@ -28,10 +28,18 @@ export default function UserManagement() {
   const [roleFilter, setRoleFilter] = useState('All Roles')
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, id: string }>({
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, id: string, name: string }>({
     isOpen: false,
-    id: ''
+    id: '',
+    name: ''
   })
+  const [statusModal, setStatusModal] = useState<{ isOpen: boolean, id: string, currentStatus: string, name: string }>({
+    isOpen: false,
+    id: '',
+    currentStatus: '',
+    name: ''
+  })
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -57,15 +65,18 @@ export default function UserManagement() {
       user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   })
 
-  const handleStatusUpdate = async (userId: string, currentStatus: string) => {
+  const handleStatusUpdate = async () => {
+    const { id, currentStatus } = statusModal
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active'
-    const res = await updateUserStatus(userId, newStatus)
+    const res = await updateUserStatus(id, newStatus)
     if (res.success) {
-      setUsers(users.map(u => u.id === userId ? { ...u, status: newStatus } : u))
-      alert(`User status updated to ${newStatus}`)
+      setUsers(users.map(u => u.id === id ? { ...u, status: newStatus } : u))
+      setFeedback({ type: 'success', message: `User status updated to ${newStatus}` })
     } else {
-      alert(res.error || 'Failed to update user status')
+      setFeedback({ type: 'error', message: res.error || 'Failed to update user status' })
     }
+    setStatusModal({ isOpen: false, id: '', currentStatus: '', name: '' })
+    setTimeout(() => setFeedback(null), 3000)
   }
 
 
@@ -74,11 +85,12 @@ export default function UserManagement() {
     const res = await deleteUser(id)
     if (res.success) {
       setUsers(users.filter(u => u.id !== id))
-      alert('User deleted successfully')
+      setFeedback({ type: 'success', message: 'User deleted successfully' })
     } else {
-      alert(res.error || 'Failed to delete user')
+      setFeedback({ type: 'error', message: res.error || 'Failed to delete user' })
     }
-    setDeleteModal({ isOpen: false, id: '' })
+    setDeleteModal({ isOpen: false, id: '', name: '' })
+    setTimeout(() => setFeedback(null), 3000)
   }
 
   return (
@@ -96,6 +108,16 @@ export default function UserManagement() {
           Add New User
         </button> */}
       </div>
+
+      {/* Feedback Toast */}
+      {feedback && (
+        <div className={`fixed top-6 right-6 z-50 p-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-8 duration-300 flex items-center gap-3 border ${
+          feedback.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+        }`}>
+          {feedback.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
+          <span className="font-black text-sm">{feedback.message}</span>
+        </div>
+      )}
 
       {/* Filters & Search */}
       <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center">
@@ -181,14 +203,14 @@ export default function UserManagement() {
                           <Eye className="w-5 h-5" />
                         </Link>
                         <button
-                          onClick={() => handleStatusUpdate(user.id, user.status || 'active')}
+                          onClick={() => setStatusModal({ isOpen: true, id: user.id, currentStatus: user.status || 'active', name: user.full_name || 'this student' })}
                           className={`p-2 rounded-lg transition-all ${user.status === 'suspended' ? 'text-green-600 hover:bg-green-50' : 'text-amber-600 hover:bg-amber-50'}`}
                           title={user.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                         >
                           {user.status === 'suspended' ? <CheckCircle2 className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
                         </button>
                         <button
-                          onClick={() => setDeleteModal({ isOpen: true, id: user.id })}
+                          onClick={() => setDeleteModal({ isOpen: true, id: user.id, name: user.full_name || 'this student' })}
                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           title="Delete User"
                         >
@@ -249,13 +271,13 @@ export default function UserManagement() {
                     <Eye className="w-5 h-5" />
                   </Link>
                   <button
-                    onClick={() => handleStatusUpdate(user.id, user.status || 'active')}
+                    onClick={() => setStatusModal({ isOpen: true, id: user.id, currentStatus: user.status || 'active', name: user.full_name || 'this student' })}
                     className={`p-2 rounded-lg ${user.status === 'suspended' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}
                   >
                     {user.status === 'suspended' ? <CheckCircle2 className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
                   </button>
                   <button
-                    onClick={() => setDeleteModal({ isOpen: true, id: user.id })}
+                    onClick={() => setDeleteModal({ isOpen: true, id: user.id, name: user.full_name || 'this student' })}
                     className="p-2 bg-red-50 text-red-400 rounded-lg"
                   >
                     <Trash2 className="w-5 h-5" />
@@ -269,12 +291,22 @@ export default function UserManagement() {
 
       <ConfirmationModal
         isOpen={deleteModal.isOpen}
-        title="Delete Student Account?"
-        message="Are you sure you want to delete this student account? This action will permanently remove their access and history. This cannot be undone."
+        title={`Delete student ${deleteModal.name}?`}
+        message={`Are you sure you want to delete ${deleteModal.name}'s account? This action will permanently remove their access and history. This cannot be undone.`}
         type="danger"
         confirmLabel="Delete User"
         onConfirm={handleDelete}
-        onCancel={() => setDeleteModal({ isOpen: false, id: '' })}
+        onCancel={() => setDeleteModal({ isOpen: false, id: '', name: '' })}
+      />
+
+      <ConfirmationModal
+        isOpen={statusModal.isOpen}
+        title={`${statusModal.currentStatus === 'active' ? 'Suspend' : 'Reactivate'} student?`}
+        message={`Are you sure you want to ${statusModal.currentStatus === 'active' ? 'suspend' : 'reactivate'} ${statusModal.name}? ${statusModal.currentStatus === 'active' ? 'They will no longer be able to log in or take tests.' : 'They will regain access to the platform.'}`}
+        type={statusModal.currentStatus === 'active' ? 'danger' : 'info'}
+        confirmLabel={statusModal.currentStatus === 'active' ? 'Suspend Account' : 'Reactivate Account'}
+        onConfirm={handleStatusUpdate}
+        onCancel={() => setStatusModal({ isOpen: false, id: '', currentStatus: '', name: '' })}
       />
 
       {showAddModal && (

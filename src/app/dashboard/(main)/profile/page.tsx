@@ -112,6 +112,7 @@ export default async function ProfilePage() {
                                         <Phone className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-primary transition-colors" />
                                         <input
                                             name="phone"
+                                            defaultValue={profile.phone}
                                             placeholder="+971 50 123 4567"
                                             type="text"
                                             className="w-full bg-slate-50 border border-slate-100 py-3.5 md:py-4 pl-14 pr-6 rounded-xl md:rounded-2xl outline-none focus:ring-4 focus:ring-primary/5 focus:bg-white focus:border-primary/20 transition-all font-bold text-sm text-[#0f172a]"
@@ -124,7 +125,7 @@ export default async function ProfilePage() {
                                         <Globe className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-primary transition-colors" />
                                         <input
                                             name="country"
-                                            defaultValue="United Arab Emirates"
+                                            defaultValue={profile.country || 'United Arab Emirates'}
                                             type="text"
                                             className="w-full bg-slate-50 border border-slate-100 py-3.5 md:py-4 pl-14 pr-6 rounded-xl md:rounded-2xl outline-none focus:ring-4 focus:ring-primary/5 focus:bg-white focus:border-primary/20 transition-all font-bold text-sm text-[#0f172a]"
                                         />
@@ -261,9 +262,12 @@ export default async function ProfilePage() {
                             <h3 className="text-2xl md:text-3xl font-black tracking-tight">Need help with payments?</h3>
                             <p className="text-slate-400 font-medium text-sm md:text-base">Our support team is available 24/7 to assist you with any queries.</p>
                         </div>
-                        <button className="w-full md:w-auto px-10 py-4 bg-primary text-white rounded-xl md:rounded-2xl font-black text-[0.65rem] md:text-sm uppercase tracking-widest shadow-2xl shadow-primary/40 hover:scale-105 transition-all">
+                        <Link 
+                            href="/contact"
+                            className="w-full md:w-auto px-10 py-4 bg-primary text-white rounded-xl md:rounded-2xl font-black text-[0.65rem] md:text-sm uppercase tracking-widest shadow-2xl shadow-primary/40 hover:scale-105 transition-all text-center block"
+                        >
                             Contact Support
-                        </button>
+                        </Link>
                     </div>
                 </div>
             </div>

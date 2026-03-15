@@ -111,7 +111,7 @@ export default function CategoryList({ initialCategories }: CategoryListProps) {
           <div
             key={category.id}
             className={`group bg-white p-6 rounded-[2rem] border transition-all duration-300 relative overflow-hidden flex flex-col ${
-              category.status === 'Inactive' ? 'opacity-75 grayscale-[0.5] border-slate-100 shadow-none' : 'border-slate-100 shadow-xl shadow-primary/5 hover:scale-[1.01]'
+              category.status === 'disabled' ? 'opacity-75 grayscale-[0.5] border-slate-100 shadow-none' : 'border-slate-100 shadow-xl shadow-primary/5 hover:scale-[1.01]'
             }`}
           >
             <div className="flex items-start justify-between mb-4">
@@ -124,9 +124,9 @@ export default function CategoryList({ initialCategories }: CategoryListProps) {
                 <div>
                   <h3 className="text-lg font-black text-[#0f172a] line-clamp-1 uppercase leading-tight">{category.name}</h3>
                   <div className={`text-[0.6rem] font-black uppercase tracking-widest ${
-                    category.status === 'Inactive' ? 'text-red-400' : 'text-green-500'
+                    category.status === 'disabled' ? 'text-red-400' : 'text-green-500'
                   }`}>
-                    {category.status || 'Active'}
+                    {category.status === 'disabled' ? 'Inactive' : 'Active'}
                   </div>
                 </div>
               </div>

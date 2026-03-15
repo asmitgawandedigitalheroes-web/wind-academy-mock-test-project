@@ -13,11 +13,14 @@ import {
   Clock, 
   BookOpen,
   Award,
-  History
+  History,
+  LogOut
 } from 'lucide-react'
 import Link from 'next/link'
 import BackButton from '@/components/common/BackButton'
 import { createClient } from '@/utils/supabase/client'
+import { updateUserStatus, forceLogoutUser } from '@/app/actions/admin'
+import ConfirmationModal from '@/components/common/ConfirmationModal'
 
 export default function StudentProfilePage() {
   const params = useParams()
@@ -28,6 +31,22 @@ export default function StudentProfilePage() {
   const [stats, setStats] = useState<any>(null)
   const [recentTests, setRecentTests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean,
+    title: string,
+    message: string,
+    type: 'info' | 'danger',
+    onConfirm: () => void,
+    confirmLabel?: string
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info',
+    onConfirm: () => {},
+  })
+
   const supabase = createClient()
 
   useEffect(() => {
@@ -87,6 +106,79 @@ export default function StudentProfilePage() {
     setLoading(false)
   }
 
+  const handleStatusToggle = () => {
+    if (!profile) return
+    const isSuspended = profile.status === 'suspended'
+    const newStatus = isSuspended ? 'active' : 'suspended'
+    
+    setModalConfig({
+      isOpen: true,
+      title: isSuspended ? 'Activate Student' : 'Suspend Student',
+      message: `Are you sure you want to ${isSuspended ? 'activate' : 'suspend'} this student? They will ${isSuspended ? 'regain' : 'lose'} access to the platform.`,
+      type: isSuspended ? 'info' : 'danger',
+      confirmLabel: isSuspended ? 'Activate' : 'Suspend',
+      onConfirm: async () => {
+        setActionLoading(true)
+        const res = await updateUserStatus(id, newStatus)
+        if (res.error) {
+          setModalConfig({
+            isOpen: true,
+            title: 'Error',
+            message: res.error,
+            type: 'danger',
+            confirmLabel: 'OK',
+            onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+          })
+        } else {
+          await fetchStudentData()
+          setModalConfig({
+            isOpen: true,
+            title: 'Success',
+            message: `User status updated to ${newStatus}`,
+            type: 'info',
+            confirmLabel: 'OK',
+            onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+          })
+        }
+        setActionLoading(false)
+      }
+    })
+  }
+
+  const handleForceLogout = () => {
+    setModalConfig({
+      isOpen: true,
+      title: 'Force Logout',
+      message: 'Are you sure you want to force logout this student from all devices? This will invalidate all active sessions immediately.',
+      type: 'danger',
+      confirmLabel: 'Force Logout',
+      onConfirm: async () => {
+        setActionLoading(true)
+        const res = await forceLogoutUser(id)
+        if (res.error) {
+          setModalConfig({
+            isOpen: true,
+            title: 'Error',
+            message: res.error,
+            type: 'danger',
+            confirmLabel: 'OK',
+            onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+          })
+        } else {
+          setModalConfig({
+            isOpen: true,
+            title: 'Logged Out',
+            message: 'Student has been logged out from all devices.',
+            type: 'info',
+            confirmLabel: 'OK',
+            onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+          })
+        }
+        setActionLoading(false)
+      }
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
@@ -143,11 +235,25 @@ export default function StudentProfilePage() {
               <Shield className="w-5 h-5 text-primary" />
               Quick Actions
             </h3>
-            <button className="w-full py-3 px-4 bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-500 rounded-xl font-bold text-sm transition-all text-left">
-              Reset Password Link
+            <button 
+              onClick={handleStatusToggle}
+              disabled={actionLoading}
+              className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all text-left flex items-center justify-between ${
+                profile?.status === 'suspended' 
+                  ? 'bg-green-50 text-green-600 hover:bg-green-100' 
+                  : 'bg-red-50 text-red-600 hover:bg-red-100'
+              } disabled:opacity-50`}
+            >
+              {profile?.status === 'suspended' ? 'Activate Student' : 'Suspend Student'}
+              {profile?.status === 'suspended' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
             </button>
-            <button className="w-full py-3 px-4 bg-slate-50 hover:bg-primary/5 text-slate-600 hover:text-primary rounded-xl font-bold text-sm transition-all text-left">
+            <button 
+              onClick={handleForceLogout}
+              disabled={actionLoading}
+              className="w-full py-3 px-4 bg-slate-50 hover:bg-primary/5 text-slate-600 hover:text-primary rounded-xl font-bold text-sm transition-all text-left flex items-center justify-between disabled:opacity-50"
+            >
               Force Logout
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -246,6 +352,17 @@ export default function StudentProfilePage() {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal 
+        isOpen={modalConfig.isOpen}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type={modalConfig.type}
+        confirmLabel={modalConfig.confirmLabel}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        isLoading={actionLoading}
+      />
     </div>
   )
 }

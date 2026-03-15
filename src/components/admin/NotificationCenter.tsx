@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { Bell, Check, Clock, X } from 'lucide-react'
-import { getNotifications, markNotificationAsRead } from '@/app/actions/admin_dashboard'
+import { getRecentAdminActivity, markNotificationAsRead } from '@/app/actions/admin_dashboard'
+import { useRouter } from 'next/navigation'
 
 export default function NotificationCenter() {
+  const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -28,8 +30,10 @@ export default function NotificationCenter() {
   }, [])
 
   const fetchNotifications = async () => {
-    const data = await getNotifications()
-    setNotifications(data)
+    const data = await getRecentAdminActivity()
+    // Since this is a live feed from various tables, we'll mark all as 'unread' 
+    // for the purpose of the badge if they are very recent (e.g. last 24h)
+    setNotifications(data.map(n => ({ ...n, is_read: false })))
   }
 
   const handleMarkAsRead = async (id: string) => {
@@ -109,7 +113,7 @@ export default function NotificationCenter() {
                         </div>
                         <p className="text-xs text-slate-500 mt-1 leading-relaxed">{n.message}</p>
                         <p className="text-[0.6rem] font-black text-slate-300 uppercase tracking-widest mt-2">
-                          {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {n.time}
                         </p>
                       </div>
                     </div>
@@ -122,7 +126,10 @@ export default function NotificationCenter() {
           <div className="p-4 bg-slate-50/50 border-t border-slate-100">
             <button 
               className="w-full py-2.5 text-[0.7rem] font-black text-primary uppercase tracking-widest hover:bg-white rounded-xl border border-transparent hover:border-slate-200 transition-all shadow-none hover:shadow-sm"
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setIsOpen(false)
+                router.push('/admin/activity')
+              }}
             >
               View All Notifications
             </button>

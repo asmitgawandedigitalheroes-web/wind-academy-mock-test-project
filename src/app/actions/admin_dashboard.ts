@@ -49,12 +49,16 @@ export async function getRecentAdminActivity() {
     { data: newProfiles },
     { data: recentTests },
     { data: newTests },
-    { data: newModules }
+    { data: newModules },
+    { data: newQuestions },
+    { data: newCategories }
   ] = await Promise.all([
     supabase.from('profiles').select('full_name, created_at').order('created_at', { ascending: false }).limit(5),
     supabase.from('test_results').select('score, completed_at, test_sets(title), profiles(full_name)').order('completed_at', { ascending: false }).limit(5),
     supabase.from('test_sets').select('title, created_at').order('created_at', { ascending: false }).limit(5),
-    supabase.from('modules').select('name, created_at').order('created_at', { ascending: false }).limit(5)
+    supabase.from('modules').select('name, created_at').order('created_at', { ascending: false }).limit(5),
+    supabase.from('questions').select('question_text, created_at, modules(name)').order('created_at', { ascending: false }).limit(5),
+    supabase.from('categories').select('name, created_at').order('created_at', { ascending: false }).limit(5)
   ])
 
   const activities: any[] = []
@@ -65,6 +69,8 @@ export async function getRecentAdminActivity() {
       type: 'signup',
       user: p.full_name || 'Anonymous',
       detail: 'New student registered',
+      title: 'New Student Signup',
+      message: `${p.full_name || 'Anonymous'} joined the platform`,
       time: new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       timestamp: new Date(p.created_at).getTime()
     })
@@ -76,6 +82,8 @@ export async function getRecentAdminActivity() {
       type: 'test',
       user: (t.profiles as any)?.full_name || 'Student',
       detail: `Completed ${(t.test_sets as any)?.title || 'Mock Test'}`,
+      title: 'Test Completed',
+      message: `${(t.profiles as any)?.full_name || 'Student'} completed ${(t.test_sets as any)?.title || 'test'}`,
       time: new Date(t.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       timestamp: new Date(t.completed_at).getTime()
     })
@@ -87,6 +95,8 @@ export async function getRecentAdminActivity() {
       type: 'admin_action',
       user: 'Admin',
       detail: `Created new test: ${t.title}`,
+      title: 'New Test Created',
+      message: `Admin created a new test: ${t.title}`,
       time: new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       timestamp: new Date(t.created_at).getTime()
     })
@@ -98,8 +108,36 @@ export async function getRecentAdminActivity() {
       type: 'admin_action',
       user: 'Admin',
       detail: `Added new module: ${s.name}`,
+      title: 'Module Added',
+      message: `New module '${s.name}' was added to the platform`,
       time: new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       timestamp: new Date(s.created_at).getTime()
+    })
+  })
+
+  newQuestions?.forEach((q: any) => {
+    activities.push({
+      id: `question-${q.created_at}`,
+      type: 'admin_action',
+      user: 'Admin',
+      detail: `Added new question to ${(q.modules as any)?.name || 'Module'}`,
+      title: 'Question Added',
+      message: `New question added to ${(q.modules as any)?.name || 'Module'}`,
+      time: new Date(q.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date(q.created_at).getTime()
+    })
+  })
+
+  newCategories?.forEach((c: any) => {
+    activities.push({
+      id: `category-${c.created_at}`,
+      type: 'admin_action',
+      user: 'Admin',
+      detail: `Created category: ${c.name}`,
+      title: 'Category Created',
+      message: `New category '${c.name}' was added`,
+      time: new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date(c.created_at).getTime()
     })
   })
 
@@ -115,12 +153,22 @@ export async function getAllAdminActivity() {
     { data: newProfiles },
     { data: recentTests },
     { data: newTests },
-    { data: newModules }
+    { data: newModules },
+    { data: payments },
+    { data: violations },
+    { data: enquiries },
+    { data: newQuestions },
+    { data: newCategories }
   ] = await Promise.all([
     supabase.from('profiles').select('id, full_name, created_at').order('created_at', { ascending: false }).limit(50),
     supabase.from('test_results').select('id, score, completed_at, test_sets(title), profiles(full_name)').order('completed_at', { ascending: false }).limit(50),
     supabase.from('test_sets').select('id, title, created_at').order('created_at', { ascending: false }).limit(50),
-    supabase.from('modules').select('id, name, created_at').order('created_at', { ascending: false }).limit(50)
+    supabase.from('modules').select('id, name, created_at').order('created_at', { ascending: false }).limit(50),
+    supabase.from('payments').select('id, amount, created_at, profiles(full_name), test_sets(title)').order('created_at', { ascending: false }).limit(50),
+    supabase.from('test_violations').select('id, violation_type, created_at, profiles(full_name), test_sets(title)').order('created_at', { ascending: false }).limit(50),
+    supabase.from('enquiries').select('id, first_name, last_name, created_at').order('created_at', { ascending: false }).limit(50),
+    supabase.from('questions').select('id, question_text, created_at, modules(name)').order('created_at', { ascending: false }).limit(50),
+    supabase.from('categories').select('id, name, created_at').order('created_at', { ascending: false }).limit(50)
   ])
 
   const activities: any[] = []
@@ -171,6 +219,66 @@ export async function getAllAdminActivity() {
       time: new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       date: new Date(s.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
       timestamp: new Date(s.created_at).getTime()
+    })
+  })
+
+  payments?.forEach(p => {
+    activities.push({
+      id: `payment-${p.id}-${p.created_at}`,
+      type: 'payment',
+      user: (p.profiles as any)?.full_name || 'Student',
+      detail: `Paid $${p.amount} for ${(p.test_sets as any)?.title || 'Module'}`,
+      time: new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date(p.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+      timestamp: new Date(p.created_at).getTime()
+    })
+  })
+
+  violations?.forEach(v => {
+    activities.push({
+      id: `violation-${v.id}-${v.created_at}`,
+      type: 'violation',
+      user: (v.profiles as any)?.full_name || 'Student',
+      detail: `Test Violation: ${v.violation_type.replace(/_/g, ' ')} in ${(v.test_sets as any)?.title || 'Test'}`,
+      time: new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date(v.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+      timestamp: new Date(v.created_at).getTime()
+    })
+  })
+
+  enquiries?.forEach(e => {
+    activities.push({
+      id: `enquiry-${e.id}-${e.created_at}`,
+      type: 'enquiry',
+      user: `${e.first_name} ${e.last_name}`,
+      detail: 'Submitted a new enquiry',
+      time: new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date(e.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+      timestamp: new Date(e.created_at).getTime()
+    })
+  })
+
+  newQuestions?.forEach((q: any) => {
+    activities.push({
+      id: `question-${q.id}-${q.created_at}`,
+      type: 'module_work',
+      user: 'Admin',
+      detail: `Added question: ${q.question_text.substring(0, 50)}${q.question_text.length > 50 ? '...' : ''} to ${(q.modules as any)?.name}`,
+      time: new Date(q.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date(q.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+      timestamp: new Date(q.created_at).getTime()
+    })
+  })
+
+  newCategories?.forEach((c: any) => {
+    activities.push({
+      id: `category-${c.id}-${c.created_at}`,
+      type: 'admin_action',
+      user: 'Admin',
+      detail: `Created category: ${c.name}`,
+      time: new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date(c.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+      timestamp: new Date(c.created_at).getTime()
     })
   })
 

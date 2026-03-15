@@ -26,7 +26,7 @@ export async function addCategory(name: string, description?: string, icon_url?:
 export async function updateCategory(id: string, name: string, description?: string, icon_url?: string, status?: string) {
   const supabase = await createClient()
 
-  const dbStatus = status === 'Inactive' ? 'disabled' : (status === 'Active' ? 'enabled' : status)
+  const dbStatus = status === 'Inactive' ? 'disabled' : 'enabled'
 
   const { data, error } = await supabase
     .from('categories')
