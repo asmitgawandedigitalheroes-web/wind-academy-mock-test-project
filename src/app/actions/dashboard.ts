@@ -614,12 +614,16 @@ export async function updateProfile(formData: FormData) {
   if (!user) return
 
   const fullName = formData.get('fullName') as string
+  const phone = formData.get('phone') as string
+  const country = formData.get('country') as string
 
   // 1. Update profiles table
   await supabase
     .from('profiles')
     .update({
       full_name: fullName,
+      phone: phone,
+      country: country
     })
     .eq('id', user.id)
 
@@ -628,6 +632,7 @@ export async function updateProfile(formData: FormData) {
     data: { full_name: fullName }
   })
 
+  revalidatePath('/dashboard/profile')
   revalidatePath('/dashboard', 'layout')
 }
 
@@ -877,7 +882,23 @@ export async function finalizeTest(sessionId: string) {
     .single()
 
   if (!session) return { error: 'Session not found' }
-  if (session.status !== 'in_progress') return { error: 'Session already finalized' }
+  
+  // If session is already finalized, look up the existing result and redirect gracefully
+  if (session.status !== 'in_progress') {
+    const { data: existingResult } = await supabase
+      .from('test_results')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('test_set_id', session.test_set_id)
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .single()
+    
+    return { 
+      error: 'Session already finalized', 
+      resultId: existingResult?.id || null 
+    }
+  }
 
   const testData = (session.test_sets as any)
   

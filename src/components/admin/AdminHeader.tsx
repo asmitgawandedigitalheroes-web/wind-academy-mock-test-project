@@ -188,19 +188,12 @@ export default function AdminHeader({ userEmail, onMenuClick }: { userEmail?: st
             <p className="text-[0.7rem] font-medium text-slate-500 mt-1">{userEmail || 'admin@windacademy.com'}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
-              <User className="w-6 h-6" />
-            </div>
-            <button 
-              onClick={handleLogout}
-              className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-              title="Logout"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
+            <User className="w-6 h-6" />
           </div>
         </div>
       </div>
+    </div>
     </header>
   )
 }

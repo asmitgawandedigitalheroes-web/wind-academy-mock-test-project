@@ -92,7 +92,8 @@ export default function TestQuestionsPage() {
   const totalMarks = questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0)
 
   const handleManualAdd = () => {
-    if (questions.length >= (test?.questions_limit || 0)) {
+    const limit = test?.target_questions || 0;
+    if (limit > 0 && questions.length >= limit) {
       setModalConfig({
         isOpen: true,
         title: 'Limit Exceeded',

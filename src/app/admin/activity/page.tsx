@@ -12,7 +12,9 @@ import {
   Calendar,
   ArrowRight,
   ShieldCheck,
-  PlusCircle
+  PlusCircle,
+  Bell,
+  FileText
 } from 'lucide-react'
 import Link from 'next/link'
 import { getAllAdminActivity } from '@/app/actions/admin_dashboard'
@@ -38,7 +40,11 @@ export default function ActivityLogPage() {
     const matchesFilter = filter === 'All' || 
                          (filter === 'Signups' && activity.type === 'signup') ||
                          (filter === 'Test Results' && activity.type === 'test') ||
-                         (filter === 'Admin Actions' && activity.type === 'admin_action')
+                         (filter === 'Admin Actions' && activity.type === 'admin_action') ||
+                         (filter === 'Payments' && activity.type === 'payment') ||
+                         (filter === 'Violations' && activity.type === 'violation') ||
+                         (filter === 'Enquiries' && activity.type === 'enquiry') ||
+                         (filter === 'Module Work' && activity.type === 'module_work')
     
     const matchesSearch = activity.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          activity.detail.toLowerCase().includes(searchTerm.toLowerCase())
@@ -82,20 +88,20 @@ export default function ActivityLogPage() {
             className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-sm"
           />
         </div>
-        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-          {['All', 'Signups', 'Test Results', 'Admin Actions'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-6 py-3.5 rounded-2xl font-black text-sm transition-all whitespace-nowrap flex-1 md:flex-none ${
-                filter === f 
-                ? 'bg-primary text-white shadow-lg shadow-primary/20' 
-                : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+        <div className="relative w-full md:w-auto min-w-[200px]">
+          <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="w-full pl-11 pr-10 py-3.5 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-black text-sm appearance-none cursor-pointer text-slate-600 hover:bg-slate-50 shadow-sm"
+          >
+            {['All', 'Signups', 'Test Results', 'Payments', 'Violations', 'Enquiries', 'Module Work', 'Admin Actions'].map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+            <ChevronLeft className="w-4 h-4 text-slate-400 -rotate-90" />
+          </div>
         </div>
       </div>
 
@@ -127,9 +133,23 @@ export default function ActivityLogPage() {
                     ? 'bg-blue-50 text-blue-600 border border-blue-100' 
                     : item.type === 'test'
                     ? 'bg-green-50 text-green-600 border border-green-100'
+                    : item.type === 'payment'
+                    ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                    : item.type === 'violation'
+                    ? 'bg-red-50 text-red-600 border border-red-100'
+                    : item.type === 'enquiry'
+                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                    : item.type === 'module_work'
+                    ? 'bg-sky-50 text-sky-600 border border-sky-100'
                     : 'bg-purple-50 text-purple-600 border border-purple-100'
                   }`}>
-                    {item.type === 'signup' ? <Users className="w-6 h-6" /> : item.type === 'test' ? <CheckCircle className="w-6 h-6" /> : <PlusCircle className="w-6 h-6" />}
+                    {item.type === 'signup' ? <Users className="w-6 h-6" /> : 
+                     item.type === 'test' ? <CheckCircle className="w-6 h-6" /> : 
+                     item.type === 'payment' ? <Clock className="w-6 h-6" /> :
+                     item.type === 'violation' ? <ShieldCheck className="w-6 h-6" /> :
+                     item.type === 'enquiry' ? <Bell className="w-6 h-6" /> :
+                     item.type === 'module_work' ? <FileText className="w-6 h-6" /> :
+                     <PlusCircle className="w-6 h-6" />}
                   </div>
                   <div>
                     <div className="flex items-center gap-3 mb-1">
@@ -139,9 +159,21 @@ export default function ActivityLogPage() {
                         ? 'bg-blue-100/50 text-blue-700 border-blue-200' 
                         : item.type === 'test'
                         ? 'bg-green-100/50 text-green-700 border-green-200'
+                        : item.type === 'payment'
+                        ? 'bg-amber-100/50 text-amber-700 border-amber-200'
+                        : item.type === 'violation'
+                        ? 'bg-red-100/50 text-red-700 border-red-200'
+                        : item.type === 'enquiry'
+                        ? 'bg-indigo-100/50 text-indigo-700 border-indigo-200'
                         : 'bg-purple-100/50 text-purple-700 border-purple-200'
                       }`}>
-                        {item.type === 'signup' ? 'Student Signup' : item.type === 'test' ? 'Test Completion' : 'Admin Action'}
+                        {item.type === 'signup' ? 'Student Signup' : 
+                         item.type === 'test' ? 'Test Completion' : 
+                         item.type === 'payment' ? 'Payment Received' :
+                         item.type === 'violation' ? 'Test Violation' :
+                         item.type === 'enquiry' ? 'Inquiry Submitted' :
+                         item.type === 'module_work' ? 'Module Update' :
+                         'Admin Action'}
                       </span>
                     </div>
                     <p className="text-slate-600 font-medium">{item.detail}</p>

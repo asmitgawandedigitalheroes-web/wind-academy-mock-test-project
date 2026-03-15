@@ -17,7 +17,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react'
-import { getPlatformSettings, updatePlatformSettings, getAdminEmail, updateAdminCredentials, flushPlatformCache } from '@/app/actions/admin'
+import { getPlatformSettings, updatePlatformSettings, getAdminEmail, updateAdminCredentials, flushPlatformCache, checkDatabaseHealth } from '@/app/actions/admin'
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'general' | 'payments' | 'security' | 'notifications'>('general')
@@ -37,6 +37,10 @@ export default function SettingsPage() {
   // Cache Flush State
   const [isFlushing, setIsFlushing] = useState(false)
   const [flushMessage, setFlushMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
+  // DB Health State
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false)
+  const [healthStatus, setHealthStatus] = useState<{ success: boolean, latency?: string, status: string, timestamp: string, error?: string } | null>(null)
 
   // Form State
   const [settings, setSettings] = useState<any>({
@@ -159,6 +163,24 @@ export default function SettingsPage() {
       setFlushMessage({ type: 'error', text: 'An unexpected error occurred.' })
     } finally {
       setIsFlushing(false)
+    }
+  }
+
+  const handleCheckHealth = async () => {
+    try {
+      setIsCheckingHealth(true)
+      const res = await checkDatabaseHealth() as any
+      setHealthStatus(res)
+    } catch (err) {
+      console.error(err)
+      setHealthStatus({
+        success: false,
+        status: 'Error',
+        timestamp: new Date().toISOString(),
+        error: 'Communication failure'
+      })
+    } finally {
+      setIsCheckingHealth(false)
     }
   }
 
@@ -305,6 +327,54 @@ export default function SettingsPage() {
                           flushMessage.type === 'success' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
                         }`}>
                           {flushMessage.text}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* DB Health Check */}
+                    <div className="flex flex-col p-6 bg-slate-50 rounded-[2rem] border border-slate-100 group gap-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-black text-[#0f172a]">Database Health Status</p>
+                          <p className="text-xs text-slate-500 font-medium">Verify connection and database responsiveness.</p>
+                        </div>
+                        <button 
+                          onClick={handleCheckHealth}
+                          disabled={isCheckingHealth}
+                          className="px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-[#152e75] transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-primary/10"
+                        >
+                          {isCheckingHealth ? (
+                            <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                          ) : <Database className="w-3 h-3" />}
+                          {isCheckingHealth ? 'Checking...' : 'Check Health'}
+                        </button>
+                      </div>
+                      
+                      {healthStatus && (
+                        <div className={`p-4 rounded-2xl border ${
+                          healthStatus.success 
+                          ? 'bg-green-50 border-green-100' 
+                          : 'bg-red-50 border-red-100'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${healthStatus.success ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                              <span className={`text-sm font-black ${healthStatus.success ? 'text-green-700' : 'text-red-700'}`}>
+                                {healthStatus.status}
+                              </span>
+                            </div>
+                            {healthStatus.latency && (
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-2 py-0.5 rounded-full border border-slate-100">
+                                Latency: {healthStatus.latency}
+                              </span>
+                            )}
+                          </div>
+                          {healthStatus.error && (
+                            <p className="text-xs text-red-600 font-medium mt-2">{healthStatus.error}</p>
+                          )}
+                          <p className="text-[10px] text-slate-400 font-medium mt-2">
+                            Last Checked: {new Date(healthStatus.timestamp).toLocaleString()}
+                          </p>
                         </div>
                       )}
                     </div>

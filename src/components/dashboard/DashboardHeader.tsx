@@ -183,13 +183,6 @@ export default function DashboardHeader({
               <UserCircle className="w-6 h-6" />
             )}
           </div>
-          <button
-            onClick={() => signout()}
-            className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all group lg:block hidden"
-            title="Logout"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
         </div>
       </div>
     </header>

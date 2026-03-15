@@ -42,11 +42,15 @@ export default function TestInterface({ test }: TestInterfaceProps) {
   const [isWindowFocused, setIsWindowFocused] = useState(true)
   const [showWarningModal, setShowWarningModal] = useState(false)
   const [warningMessage, setWarningMessage] = useState('')
+  const [isAutoSubmitting, setIsAutoSubmitting] = useState(false)
+  const [screenshotBlackout, setScreenshotBlackout] = useState(false)
 
   const questions = test.questions || []
   const currentQuestion = questions[currentQuestionIdx]
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const tabSwitchCountRef = useRef(0)
+  const isTimeExpiredRef = useRef(false)
+  const hasSubmittedRef = useRef(false)
 
   // Handle Security Events
   const reportViolation = useCallback(async (type: string, details: any = {}) => {
@@ -93,11 +97,22 @@ export default function TestInterface({ test }: TestInterfaceProps) {
     }
   }
 
-  const handleSubmit = useCallback(async () => {
-    if (isSubmitting || !sessionId) return
+  const handleSubmit = useCallback(async (isAutoSubmit = false) => {
+    // Prevent double-submission
+    if (hasSubmittedRef.current || !sessionId) return
+    if (isSubmitting && !isAutoSubmit) return
+    
+    hasSubmittedRef.current = true
     setIsSubmitting(true)
+    
+    // If auto-submitting due to time expiry, close modals and show overlay
+    if (isAutoSubmit) {
+      setShowConfirmSubmit(false)
+      setShowWarningModal(false)
+      setIsAutoSubmitting(true)
+    }
 
-    const response = await finalizeTest(sessionId)
+    const response: any = await finalizeTest(sessionId)
 
     if (response.success) {
       // Clear session from storage on successful submission
@@ -122,11 +137,23 @@ export default function TestInterface({ test }: TestInterfaceProps) {
         // Fallback: regular redirection in same tab
         router.push(resultUrl)
       }
+    } else if (response.error === 'Session already finalized' && response.resultId) {
+      // Session was already auto-finalized by the server — redirect to results gracefully
+      sessionStorage.removeItem(`test_session_${test.id}`)
+      sessionStorage.removeItem(`test_violation_count_${test.id}`)
+      router.push(`/dashboard/results/${response.resultId}`)
+    } else if (response.error === 'Session already finalized') {
+      // Already finalized but no resultId — redirect to modules
+      sessionStorage.removeItem(`test_session_${test.id}`)
+      sessionStorage.removeItem(`test_violation_count_${test.id}`)
+      router.push('/dashboard/modules')
     } else {
+      hasSubmittedRef.current = false
+      setIsAutoSubmitting(false)
       alert('Error submitting test: ' + response.error)
       setIsSubmitting(false)
     }
-  }, [sessionId, isSubmitting, router])
+  }, [sessionId, isSubmitting, router, test.id])
 
   // Initialize Session
   useEffect(() => {
@@ -199,6 +226,15 @@ export default function TestInterface({ test }: TestInterfaceProps) {
       e.preventDefault()
     }
 
+    // Blackout helper — hides ALL exam content for a duration so screenshots capture nothing
+    const triggerScreenshotBlackout = () => {
+      setScreenshotBlackout(true)
+      // Immediately wipe clipboard
+      try { navigator.clipboard.writeText('') } catch { /* ignore */ }
+      // Keep blacked out for 3 seconds so any screenshot tool captures a blank screen
+      setTimeout(() => setScreenshotBlackout(false), 3000)
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isExamStarted) return
 
@@ -206,7 +242,7 @@ export default function TestInterface({ test }: TestInterfaceProps) {
       if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x', 'a', 'p', 's'].includes(e.key.toLowerCase())) {
         e.preventDefault()
         reportViolation('keyboard_shortcut_blocked', { key: e.key })
-        navigator.clipboard.writeText('') // Clear clipboard just in case
+        try { navigator.clipboard.writeText('') } catch { /* ignore */ }
         return
       }
 
@@ -217,12 +253,27 @@ export default function TestInterface({ test }: TestInterfaceProps) {
         return
       }
 
-      // Print Screen protection & Mac Screenshot shortcuts (Cmd+Shift+3/4/5)
-      if (e.key === 'PrintScreen' || ((e.ctrlKey || e.metaKey) && e.shiftKey && ['3', '4', '5', 's'].includes(e.key.toLowerCase()))) {
+      // PrintScreen key — trigger immediate blackout
+      if (e.key === 'PrintScreen') {
         e.preventDefault()
-        reportViolation('screenshot_attempted')
-        navigator.clipboard.writeText('') // Clear clipboard
-        alert('Screenshots and copying are strictly prohibited during the exam.')
+        reportViolation('screenshot_attempted', { method: 'PrintScreen' })
+        triggerScreenshotBlackout()
+        return
+      }
+
+      // Windows Snipping Tool: Win+Shift+S
+      if (e.shiftKey && e.key.toLowerCase() === 's' && (e.metaKey || e.getModifierState?.('Meta') || e.getModifierState?.('OS'))) {
+        e.preventDefault()
+        reportViolation('screenshot_attempted', { method: 'SnippingTool' })
+        triggerScreenshotBlackout()
+        return
+      }
+
+      // Mac Screenshot shortcuts (Cmd+Shift+3/4/5)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && ['3', '4', '5'].includes(e.key)) {
+        e.preventDefault()
+        reportViolation('screenshot_attempted', { method: 'MacScreenshot' })
+        triggerScreenshotBlackout()
         return
       }
     }
@@ -285,6 +336,14 @@ export default function TestInterface({ test }: TestInterfaceProps) {
       e.returnValue = ''
     }
 
+    // Continuously clear clipboard during exam (catches delayed screenshot pastes)
+    let clipboardInterval: NodeJS.Timeout | null = null
+    if (isExamStarted) {
+      clipboardInterval = setInterval(() => {
+        try { navigator.clipboard.writeText('') } catch { /* ignore */ }
+      }, 2000)
+    }
+
     document.addEventListener('contextmenu', handleContextMenu)
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -301,23 +360,124 @@ export default function TestInterface({ test }: TestInterfaceProps) {
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('fullscreenchange', handleFullscreenChange)
       window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (clipboardInterval) clearInterval(clipboardInterval)
     }
   }, [test.id, isExamStarted, isSubmitting, reportViolation, handleSubmit])
+
+  // Inject print media CSS to hide exam content from print-to-PDF screenshots
+  useEffect(() => {
+    if (!isExamStarted) return
+    const style = document.createElement('style')
+    style.id = 'exam-print-guard'
+    style.textContent = `
+      @media print {
+        body * { display: none !important; visibility: hidden !important; }
+        body::after {
+          content: "⚠️ EXAM CONTENT PROTECTED — Screenshots and printing are strictly prohibited.";
+          display: block !important;
+          visibility: visible !important;
+          font-size: 24px;
+          font-weight: bold;
+          text-align: center;
+          padding: 100px 20px;
+          color: #ef4444;
+        }
+      }
+    `
+    document.head.appendChild(style)
+    return () => { document.getElementById('exam-print-guard')?.remove() }
+  }, [isExamStarted])
+
+  // Screen capture API detection — detect if someone starts screen recording
+  useEffect(() => {
+    if (!isExamStarted) return
+
+    const detectScreenCapture = () => {
+      // Check if Display Capture API is being used
+      if (navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices) {
+        // Override getDisplayMedia to detect capture attempts
+        const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices)
+        navigator.mediaDevices.getDisplayMedia = async function(constraints?: DisplayMediaStreamOptions) {
+          reportViolation('screen_recording_attempted')
+          setScreenshotBlackout(true)
+          throw new DOMException('Screen capture is not allowed during the exam.', 'NotAllowedError')
+        }
+        return () => {
+          navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia
+        }
+      }
+    }
+
+    const cleanup = detectScreenCapture()
+    return () => { cleanup?.() }
+  }, [isExamStarted, reportViolation])
 
   // Timer logic
   useEffect(() => {
     if (!isExamStarted) return
-    if (timeLeft <= 0) {
-      handleSubmit()
+    if (timeLeft <= 0 && !isTimeExpiredRef.current) {
+      // Time just expired — force auto-submit
+      isTimeExpiredRef.current = true
+      handleSubmit(true) // true = auto-submit
       return
     }
 
+    if (timeLeft <= 0) return // Already handled
+
     const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1)
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
     }, 1000)
 
     return () => clearInterval(timer)
   }, [timeLeft, handleSubmit, isExamStarted])
+
+  // Multi-monitor / dual-screen detection
+  useEffect(() => {
+    if (!isExamStarted) return
+
+    const checkMultipleScreens = () => {
+      // Heuristic: if screen.width differs significantly from window available width,
+      // or if the window is positioned beyond a single screen boundary
+      const screenWidth = window.screen.width
+      const screenAvailWidth = window.screen.availWidth
+      const outerWidth = window.outerWidth
+      const screenLeft = window.screenX || window.screenLeft || 0
+
+      // Detect if window is positioned beyond primary screen
+      const isOffscreen = screenLeft < 0 || screenLeft > screenWidth
+      
+      // Use Screen Details API if available for definitive multi-monitor detection
+      if ('getScreenDetails' in window) {
+        (window as any).getScreenDetails?.().then((screenDetails: any) => {
+          if (screenDetails?.screens?.length > 1) {
+            reportViolation('multi_monitor_detected', {
+              screenCount: screenDetails.screens.length
+            })
+            setWarningMessage('⚠️ Multiple monitors detected. Please disconnect additional displays and use only one screen during the exam.')
+            setShowWarningModal(true)
+          }
+        }).catch(() => { /* Permission denied, fall through to heuristic */ })
+      }
+
+      if (isOffscreen) {
+        reportViolation('window_offscreen', { screenLeft, screenWidth })
+        setWarningMessage('⚠️ Your exam window appears to be on a secondary display. Please move it to your primary screen.')
+        setShowWarningModal(true)
+      }
+    }
+
+    // Check on start and periodically
+    checkMultipleScreens()
+    const intervalId = setInterval(checkMultipleScreens, 10000) // every 10s
+
+    return () => clearInterval(intervalId)
+  }, [isExamStarted, reportViolation])
 
   // Auto-save logic
   const saveProgress = useCallback(async (qId: string, selection: number | number[] | null, flagged: boolean) => {
@@ -504,12 +664,29 @@ export default function TestInterface({ test }: TestInterfaceProps) {
 
   return (
     <div 
-      className={`transition-all duration-500 ${!isWindowFocused ? 'blur-2xl grayscale pointer-events-none scale-95' : ''} select-none`}
+      className={`transition-all duration-100 ${!isWindowFocused ? 'blur-2xl grayscale pointer-events-none scale-95' : ''} ${screenshotBlackout ? 'invisible' : ''} select-none`}
       onCopy={(e: React.ClipboardEvent) => e.preventDefault()}
       onCut={(e: React.ClipboardEvent) => e.preventDefault()}
       onPaste={(e: React.ClipboardEvent) => e.preventDefault()}
       onContextMenu={(e: React.MouseEvent) => e.preventDefault()}
     >
+      {/* Screenshot Blackout Overlay — covers EVERYTHING when screenshot attempt detected */}
+      {screenshotBlackout && (
+        <div className="fixed inset-0 z-[250] bg-[#0f172a] flex items-center justify-center p-6 text-center" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999 }}>
+          <div className="space-y-6">
+            <div className="w-24 h-24 bg-red-500/20 rounded-[2.5rem] flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-12 h-12 text-red-500" />
+            </div>
+            <h3 className="text-3xl font-black text-white uppercase tracking-tight">Content Protected</h3>
+            <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">
+              Screenshot attempt detected and logged.
+            </p>
+            <p className="text-red-400 font-bold text-xs uppercase tracking-widest animate-pulse">
+              This violation has been reported.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Focus Security Overlay */}
       {!isWindowFocused && isExamStarted && (
         <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-3xl flex items-center justify-center p-6 text-center animate-in fade-in duration-300">
@@ -554,9 +731,10 @@ export default function TestInterface({ test }: TestInterfaceProps) {
             </div>
             <button
               onClick={() => setShowConfirmSubmit(true)}
-              className="bg-primary text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-primary/20"
+              disabled={isAutoSubmitting || isTimeExpiredRef.current}
+              className="bg-primary text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Submit Test
+              {isAutoSubmitting ? 'Auto-Submitting...' : 'Submit Test'}
             </button>
           </div>
         </div>
@@ -733,8 +911,24 @@ export default function TestInterface({ test }: TestInterfaceProps) {
           </div>
         </div>
 
+        {/* Auto-Submitting Overlay */}
+        {isAutoSubmitting && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-6">
+            <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 text-center">
+              <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
+                <Clock className="w-10 h-10 text-primary animate-pulse" />
+              </div>
+              <h3 className="text-2xl font-black text-[#0f172a] mb-4">Time&apos;s Up!</h3>
+              <p className="text-slate-500 font-medium mb-6 leading-relaxed">
+                Your exam time has expired. Your answers are being submitted automatically...
+              </p>
+              <div className="w-16 h-16 border-4 border-slate-100 border-t-primary rounded-full animate-spin mx-auto"></div>
+            </div>
+          </div>
+        )}
+
         {/* Confirmation Modal */}
-        {showConfirmSubmit && (
+        {showConfirmSubmit && !isAutoSubmitting && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
             <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
               <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-8 text-4xl">🚀</div>
@@ -750,7 +944,7 @@ export default function TestInterface({ test }: TestInterfaceProps) {
                   Go Back
                 </button>
                 <button
-                  onClick={handleSubmit}
+                  onClick={() => handleSubmit(false)}
                   disabled={isSubmitting}
                   className="py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#152e75] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >

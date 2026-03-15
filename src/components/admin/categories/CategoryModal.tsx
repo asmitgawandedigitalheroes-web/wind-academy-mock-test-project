@@ -35,7 +35,8 @@ export default function CategoryModal({
       setName(initialData.name)
       setDescription(initialData.description || '')
       setIcon(initialData.icon_url || 'LayoutGrid')
-      setStatus(initialData.status || 'Active')
+      const mappedStatus = initialData.status === 'disabled' ? 'Inactive' : 'Active'
+      setStatus(mappedStatus)
     } else if (isOpen) {
       setName('')
       setDescription('')

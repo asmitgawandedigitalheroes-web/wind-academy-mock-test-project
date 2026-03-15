@@ -192,6 +192,7 @@ export default function ModuleSettingsPage() {
                                 label="Free Tests Limit"
                                 icon={<BarChart3 className="w-4 h-4" />}
                                 type="text"
+                                numericOnly
                                 value={formData.free_tests_limit}
                                 onChange={e => setFormData({ ...formData, free_tests_limit: e.target.value.replace(/[^0-9]/g, '') })}
                             />
@@ -199,6 +200,7 @@ export default function ModuleSettingsPage() {
                                 label="Paid Tests Limit"
                                 icon={<BarChart3 className="w-4 h-4" />}
                                 type="text"
+                                numericOnly
                                 value={formData.paid_tests_limit}
                                 onChange={e => setFormData({ ...formData, paid_tests_limit: e.target.value.replace(/[^0-9]/g, '') })}
                             />
@@ -233,6 +235,7 @@ export default function ModuleSettingsPage() {
                                         label="Module Price (₹)"
                                         icon={<CreditCard className="w-4 h-4" />}
                                         type="text"
+                                        numericOnly
                                         value={formData.price}
                                         onChange={e => {
                                             const val = e.target.value.replace(/[^0-9.]/g, '');
@@ -323,7 +326,7 @@ function Section({ title, icon, children }: { title: string, icon: React.ReactNo
     )
 }
 
-function InputGroup({ label, icon, ...props }: { label: string, icon?: React.ReactNode } & React.InputHTMLAttributes<HTMLInputElement>) {
+function InputGroup({ label, icon, numericOnly, ...props }: { label: string, icon?: React.ReactNode, numericOnly?: boolean } & React.InputHTMLAttributes<HTMLInputElement>) {
     return (
         <div className="space-y-3 group/input">
             <div className="flex items-center justify-between ml-1">
@@ -340,6 +343,8 @@ function InputGroup({ label, icon, ...props }: { label: string, icon?: React.Rea
                     {...props}
                     className={`w-full ${icon ? 'pl-14' : 'px-6'} py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-primary/20 focus:ring-8 focus:ring-primary/5 transition-all duration-300 font-bold text-[#0f172a] placeholder:text-slate-300 hover:bg-white`}
                     onKeyDown={(e) => {
+                        if (!numericOnly) return;
+
                         const isControlKey = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Escape'].includes(e.key);
                         const isNumber = /[0-9]/.test(e.key);
                         const isDecimal = e.key === '.' && props.type === 'text';
