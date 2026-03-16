@@ -57,7 +57,7 @@ export async function signup(formData: FormData) {
       data: {
         full_name: name
       },
-      emailRedirectTo: `${getURL()}api/auth/callback?next=/dashboard`,
+      emailRedirectTo: `${getURL()}api/auth/callback?next=/login?message=${encodeURIComponent('Email confirmed. Please log in to your account.')}`,
     }
   })
 
@@ -115,6 +115,9 @@ export async function updatePassword(formData: FormData) {
   if (error) {
     return redirect(`/reset-password?error=${encodeURIComponent(error.message)}`)
   }
+
+  // Force sign out after password reset so they have to log in with new credentials
+  await supabase.auth.signOut()
 
   return redirect('/login?message=Password updated successfully. Please log in with your new password.')
 }
