@@ -74,7 +74,7 @@ export default function NavbarClient({ user, role }: { user: any, role?: string 
               )
             })}
             <div className="flex items-center space-x-4 border-l border-slate-200 pl-6 ml-2">
-              {user ? (
+              {user && !['/login', '/signup', '/reset-password'].includes(pathname) ? (
                 <>
                   <div className="flex flex-col text-right">
                     <div className="font-semibold text-primary leading-none">
@@ -154,7 +154,7 @@ export default function NavbarClient({ user, role }: { user: any, role?: string 
                 )
               })}
               <div className="pt-4 flex flex-col gap-3">
-                {user ? (
+                {user && !['/login', '/signup', '/reset-password'].includes(pathname) ? (
                   <>
                     <div className="px-3 py-2 font-semibold text-primary border-b border-slate-200">
                       Logged in as {user.user_metadata?.full_name || user.email?.split('@')[0]}

@@ -16,6 +16,10 @@ export async function GET(request: Request) {
     if (!error) {
       console.log('Auth success:', data.user?.email)
       if (next) {
+        // If the next page is login, sign out first to ensure they have to log in manually
+        if (next.includes('/login')) {
+          await supabase.auth.signOut()
+        }
         return NextResponse.redirect(`${requestUrl.origin}${next}`)
       }
       return NextResponse.redirect(`${requestUrl.origin}/`)
