@@ -44,7 +44,7 @@ export async function addModule(formData: {
     })
   }
 
-  revalidatePath('/admin/questions')
+  revalidatePath('/admin/modules')
   return { success: true }
 }
 
@@ -62,7 +62,6 @@ export async function toggleModuleStatus(moduleId: string, currentStatus: 'enabl
     return { error: error.message }
   }
 
-  revalidatePath('/admin/questions')
   revalidatePath('/admin/modules')
   revalidatePath(`/admin/modules/${moduleId}`)
   return { success: true }
@@ -99,7 +98,7 @@ export async function addQuestion(formData: {
     return { error: error.message }
   }
 
-  revalidatePath('/admin/questions')
+  revalidatePath('/admin/modules')
   return { success: true }
 }
 
@@ -147,7 +146,7 @@ export async function getModulesWithCategories() {
 
         module.test_sets?.forEach((test: any) => {
             const results = test.test_results || [];
-            const passMark = test.pass_percentage || 70;
+            const passMark = test.pass_percentage || 75;
             totalTaken += results.length;
             totalPassed += results.filter((r: any) => r.score >= passMark).length;
         });
@@ -178,7 +177,7 @@ export async function getTestsByModule(moduleId: string) {
     // Transform the data to pull counts and stats
     const testsWithStats = (data || []).map(test => {
         const results = test.test_results || [];
-        const passMark = test.pass_percentage || 70;
+        const passMark = test.pass_percentage || 75;
         const taken = results.length;
         const passed = results.filter((r: any) => r.score >= passMark).length;
 
@@ -216,7 +215,7 @@ export async function addTest(formData: {
       description: formData.description,
       module_id: formData.moduleId,
       time_limit_minutes: formData.duration,
-      pass_percentage: formData.passPercentage || 40,
+      pass_percentage: formData.passPercentage || 75,
       target_questions: formData.targetQuestions || 0,
       attempts_allowed: formData.attemptsAllowed || 1,
       test_type: formData.testType || 'full',
@@ -525,7 +524,7 @@ export async function getTestDetails(testId: string) {
     
     if (data) {
         const results = data.test_results || [];
-        const passMark = data.pass_percentage || 70;
+        const passMark = data.pass_percentage || 75;
         data.taken = results.length;
         data.passed = results.filter((r: any) => r.score >= passMark).length;
         data.question_count = data.question_count && data.question_count[0] ? (data.question_count[0] as any).count : 0;

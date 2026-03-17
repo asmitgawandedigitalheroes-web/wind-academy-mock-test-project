@@ -26,7 +26,7 @@ export default function AddTestModal({
   const [description, setDescription] = useState('')
   const [duration, setDuration] = useState<any>(60)
   const [targetQuestions, setTargetQuestions] = useState<any>(30)
-  const [passPercentage, setPassPercentage] = useState<any>(40)
+  const [passPercentage, setPassPercentage] = useState<any>(75)
   const [attemptsAllowed, setAttemptsAllowed] = useState<any>(1)
   const [marksPerQuestion, setMarksPerQuestion] = useState<any>(1)
   const [negativeMarks, setNegativeMarks] = useState<any>(0)

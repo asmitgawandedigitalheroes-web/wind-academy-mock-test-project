@@ -30,9 +30,9 @@ export default async function LoginPage({
             <div className="relative w-16 h-16 flex items-center justify-center overflow-hidden group-hover:-translate-y-1 transition-transform">
               <Image src="/logo.png" alt="Wings Academy Logo" fill className="object-contain" priority />
             </div>
-            <div className="flex flex-col items-start">
+            <div className="flex flex-col items-center">
               <span className="text-2xl font-black text-primary leading-none tracking-tight">WINGS <span className="text-accent">ACADEMY</span></span>
-              <span className="text-[0.65rem] font-bold text-slate-500 uppercase tracking-widest mt-1">Prepare for Takeoff</span>
+              <span className="text-[0.65rem] font-bold text-slate-500 uppercase tracking-widest mt-1 w-full text-center">Prepare for take off</span>
             </div>
           </Link>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-primary">

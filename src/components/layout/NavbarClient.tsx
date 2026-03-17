@@ -50,9 +50,9 @@ export default function NavbarClient({ user, role }: { user: any, role?: string 
             <div className="relative w-12 h-12 flex items-center justify-center overflow-hidden group-hover:-translate-y-1 transition-transform">
               <Image src="/logo.png" alt="Wings Academy Logo" fill className="object-contain" priority />
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col items-center">
               <span className="text-xl font-black text-primary leading-none tracking-tight">WINGS <span className="text-accent">ACADEMY</span></span>
-              <span className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Prepare for Takeoff</span>
+              <span className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mt-0.5 w-full text-center">Prepare for take off</span>
             </div>
           </Link>
 

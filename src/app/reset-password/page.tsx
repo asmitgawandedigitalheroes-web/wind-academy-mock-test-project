@@ -15,7 +15,7 @@ export default async function ResetPasswordPage({
 }) {
   const resolvedParams = await searchParams;
   // Trigger turbopack rebuild to clear cached actions
-  
+
   return (
     <>
       <Navbar />
@@ -29,6 +29,10 @@ export default async function ResetPasswordPage({
           <Link href="/" className="flex justify-center items-center gap-3 group mb-8">
             <div className="relative w-16 h-16 flex items-center justify-center overflow-hidden group-hover:-translate-y-1 transition-transform">
               <Image src="/logo.png" alt="Wings Academy Logo" fill className="object-contain" priority />
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-black text-primary leading-none tracking-tight">WINGS <span className="text-accent">ACADEMY</span></span>
+              <span className="text-[0.65rem] font-bold text-slate-500 uppercase tracking-widest mt-1 w-full text-center">Prepare for take off</span>
             </div>
           </Link>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-primary">
@@ -47,7 +51,7 @@ export default async function ResetPasswordPage({
                   {resolvedParams.error}
                 </div>
               )}
-              
+
               <div>
                 <label htmlFor="password" className="block text-sm font-bold text-slate-700">
                   New Password

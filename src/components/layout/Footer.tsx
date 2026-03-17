@@ -18,9 +18,9 @@ const Footer = async () => {
               <div className="relative w-14 h-14 flex items-center justify-center overflow-hidden group-hover:-translate-y-1 transition-transform">
                 <Image src="/logo.png" alt="Wings Academy Logo" fill className="object-contain" />
               </div>
-              <div className="flex flex-col">
+              <div className="flex flex-col items-center">
                 <span className="text-2xl font-black text-white leading-none tracking-tight">WINGS <span className="text-accent">ACADEMY</span></span>
-
+                <span className="text-[0.65rem] font-bold text-slate-400 uppercase tracking-widest mt-1 w-full text-center">Prepare for take off</span>
               </div>
             </Link>
             <p className="text-slate-400 mb-8 leading-relaxed font-medium">

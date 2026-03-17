@@ -194,7 +194,7 @@ export default function TestsManagementPage() {
                           <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-400 font-bold">
                             <span className="flex items-center gap-1">
                               <BookOpen className="w-3 h-3" />
-                              {test.pass_percentage || 70}% Pass Mark
+                              {test.pass_percentage || 75}% Pass Mark
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />

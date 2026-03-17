@@ -29,24 +29,24 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
 
   return (
     <main className="min-h-screen pt-32 pb-0 bg-[#f8fafc]">
-      
+
       {/* Intro Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-24">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-16"
         >
-          <h1 className="text-4xl md:text-5xl lg:text-7xl font-black text-[#0f172a] mb-6 tracking-tight">
-            About <span className="text-primary italic">Wings Academy</span>
+          <h1 className="text-4xl md:text-5xl lg:text-7xl font-black text-primary mb-6 tracking-tight">
+            About Wings<span className="text-accent italic"> Academy</span>
           </h1>
           <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed font-medium">
             We are dedicated to providing the most accurate, challenging, and up-to-date mock tests for aspiring Aircraft Maintenance Engineers worldwide.
           </p>
         </motion.div>
-        
+
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-stretch">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
@@ -62,8 +62,8 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
               To be the globally recognized standard for AME exam preparation, bridging the gap between theoretical knowledge and practical certification success.
             </p>
           </motion.div>
-          
-          <motion.div 
+
+          <motion.div
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
@@ -73,17 +73,17 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
             <div className="bg-primary p-8 md:p-12 rounded-[2.5rem] border border-white/10 shadow-2xl h-full flex flex-col justify-center text-white relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2 group-hover:bg-white/10 transition-colors duration-700"></div>
               <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center text-primary">
-                      <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-2xl font-black tracking-tight">Founded by AMEs, for AMEs.</h3>
+                <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center text-primary">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h3 className="text-2xl font-black tracking-tight">Founded by AMEs, for AMEs.</h3>
               </div>
               <p className="text-slate-200 leading-relaxed text-lg font-medium relative z-10">
                 We recognized the severe lack of modernized, mobile-friendly, and accurate testing platforms. We built this platform to be the tool we always wished we had during our own certification journeys.
               </p>
               <div className="mt-8 flex items-center gap-2">
-                  <div className="w-8 h-0.5 bg-accent rounded-full"></div>
-                  <span className="text-accent font-black uppercase text-xs tracking-[0.2em]">The Wings Standard</span>
+                <div className="w-8 h-0.5 bg-accent rounded-full"></div>
+                <span className="text-accent font-black uppercase text-xs tracking-[0.2em]">The Wings Standard</span>
               </div>
             </div>
           </motion.div>
@@ -96,7 +96,7 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-12 lg:gap-16">
             {stats.map((stat, idx) => (
-              <motion.div 
+              <motion.div
                 key={idx}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -121,7 +121,7 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
           </p>
         </div>
 
-        <motion.div 
+        <motion.div
           variants={containerVariants}
           initial="hidden"
           whileInView="visible"
@@ -129,7 +129,7 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
           className="grid md:grid-cols-2 gap-8"
         >
           {values.map((value, idx) => (
-            <motion.div 
+            <motion.div
               key={idx}
               variants={itemVariants}
               className="bg-white p-8 rounded-[2rem] shadow-xl shadow-primary/5 border border-slate-100 flex flex-col sm:flex-row gap-6 group hover:border-primary/20 transition-all duration-500"
@@ -148,13 +148,13 @@ export default function AboutClient({ stats, values }: AboutClientProps) {
 
       {/* Extra Polish: Bottom CTA area */}
       <section className="pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-slate-100/50 rounded-[3rem] p-12 text-center border border-slate-100">
-              <h2 className="text-3xl font-black text-primary mb-6 tracking-tight">Ready to Begin Your Success Story?</h2>
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                  <button className="bg-primary text-white px-8 py-4 rounded-2xl font-black hover:brightness-110 transition-all shadow-xl shadow-primary/20">Join Wings Academy</button>
-                  <button className="bg-white text-primary border-2 border-slate-200 px-8 py-4 rounded-2xl font-black hover:bg-slate-50 transition-all">Contact Us</button>
-              </div>
+        <div className="bg-slate-100/50 rounded-[3rem] p-12 text-center border border-slate-100">
+          <h2 className="text-3xl font-black text-primary mb-6 tracking-tight">Ready to Begin Your Success Story?</h2>
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <button className="bg-primary text-white px-8 py-4 rounded-2xl font-black hover:brightness-110 transition-all shadow-xl shadow-primary/20">Join Wings Academy</button>
+            <button className="bg-white text-primary border-2 border-slate-200 px-8 py-4 rounded-2xl font-black hover:bg-slate-50 transition-all">Contact Us</button>
           </div>
+        </div>
       </section>
     </main>
   )
