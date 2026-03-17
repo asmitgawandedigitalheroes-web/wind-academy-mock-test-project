@@ -28,7 +28,7 @@ export async function getDashboardStats() {
     : 0
 
   const testsPassed = results?.filter(r => {
-    const passPercentage = (r.test_sets as any)?.pass_percentage || 40
+    const passPercentage = (r.test_sets as any)?.pass_percentage || 75
     return Number(r.score) >= passPercentage
   }).length || 0
 
@@ -365,7 +365,7 @@ export async function getResultDetails(resultId: string) {
     ? Math.round((data.correct_answers / data.total_questions) * 100) 
     : 0
     
-  const passPercentage = test?.pass_percentage || 40
+  const passPercentage = test?.pass_percentage || 75
   const status = Number(data.score) >= passPercentage ? 'Passed' : 'Failed'
 
   // 2. Fetch Review Data if allowed (or partially allowed)
@@ -448,7 +448,7 @@ export async function getResultsHistory() {
   if (error) return []
 
   return data.map(r => {
-    const passPercentage = (r.test_sets as any)?.pass_percentage || 40
+    const passPercentage = (r.test_sets as any)?.pass_percentage || 75
     return {
       id: r.id,
       title: (r.test_sets as any)?.title,

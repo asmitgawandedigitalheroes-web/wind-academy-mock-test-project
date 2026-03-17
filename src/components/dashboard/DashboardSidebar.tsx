@@ -45,9 +45,9 @@ export default function DashboardSidebar({
           <div className="relative w-10 h-10 flex items-center justify-center overflow-hidden">
             <Image src="/logo.png" alt="Logo" fill className="object-contain" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-black text-[#0f172a] leading-none tracking-tight">WINGS</span>
-            <span className="text-[0.6rem] font-bold text-slate-400 uppercase tracking-widest mt-0.5">STUDENT</span>
+          <div className="flex flex-col items-center">
+            <span className="text-sm font-black text-[#0f172a] leading-none tracking-tight">WINGS <span className="text-accent">ACADEMY</span></span>
+            <span className="text-[0.55rem] font-bold text-slate-400 uppercase tracking-widest mt-1 w-full text-center">Prepare for take off</span>
           </div>
         </Link>
         

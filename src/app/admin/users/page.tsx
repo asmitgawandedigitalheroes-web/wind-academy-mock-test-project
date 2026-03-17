@@ -41,6 +41,8 @@ export default function UserManagement() {
   })
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -66,6 +68,7 @@ export default function UserManagement() {
   })
 
   const handleStatusUpdate = async () => {
+    setIsUpdatingStatus(true)
     const { id, currentStatus } = statusModal
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active'
     const res = await updateUserStatus(id, newStatus)
@@ -75,12 +78,14 @@ export default function UserManagement() {
     } else {
       setFeedback({ type: 'error', message: res.error || 'Failed to update user status' })
     }
+    setIsUpdatingStatus(false)
     setStatusModal({ isOpen: false, id: '', currentStatus: '', name: '' })
     setTimeout(() => setFeedback(null), 3000)
   }
 
 
   const handleDelete = async () => {
+    setIsDeleting(true)
     const { id } = deleteModal
     const res = await deleteUser(id)
     if (res.success) {
@@ -89,6 +94,7 @@ export default function UserManagement() {
     } else {
       setFeedback({ type: 'error', message: res.error || 'Failed to delete user' })
     }
+    setIsDeleting(false)
     setDeleteModal({ isOpen: false, id: '', name: '' })
     setTimeout(() => setFeedback(null), 3000)
   }
@@ -297,6 +303,7 @@ export default function UserManagement() {
         confirmLabel="Delete User"
         onConfirm={handleDelete}
         onCancel={() => setDeleteModal({ isOpen: false, id: '', name: '' })}
+        isLoading={isDeleting}
       />
 
       <ConfirmationModal
@@ -307,6 +314,7 @@ export default function UserManagement() {
         confirmLabel={statusModal.currentStatus === 'active' ? 'Suspend Account' : 'Reactivate Account'}
         onConfirm={handleStatusUpdate}
         onCancel={() => setStatusModal({ isOpen: false, id: '', currentStatus: '', name: '' })}
+        isLoading={isUpdatingStatus}
       />
 
       {showAddModal && (

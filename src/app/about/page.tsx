@@ -38,18 +38,18 @@ export default function AboutPage() {
     <>
       <Navbar />
       <main className="min-h-screen pt-32 pb-0 bg-slate-50">
-        
+
         {/* Intro Section */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-24">
           <div className="text-center mb-16">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-[#0f172a] mb-6 tracking-tight">
-              About <span className="text-primary">Wings Academy</span>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-primary mb-6 tracking-tight">
+              About Wings<span className="text-accent"> Academy</span>
             </h1>
             <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
               We are dedicated to providing the most accurate, challenging, and up-to-date mock tests for aspiring Aircraft Maintenance Engineers worldwide.
             </p>
           </div>
-          
+
           <div className="grid md:grid-cols-2 gap-8 lg:gap-12 items-stretch">
             <div className="bg-white p-8 md:p-12 rounded-3xl shadow-xl shadow-primary/5 border border-slate-100 flex flex-col justify-center">
               <h2 className="text-3xl font-bold text-primary mb-6">Our Mission</h2>
