@@ -12,6 +12,8 @@ import DashboardPreview from '@/components/home/DashboardPreview'
 import FinalCTA from '@/components/home/FinalCTA'
 import { createClient } from '@/utils/supabase/server'
 
+import { getPublicModules } from '@/app/actions/dashboard'
+
 export const metadata: Metadata = {
   title: "Home",
   description: "Wings Academy is the world's most accurate and up-to-date mock test platform for Aircraft Maintenance Engineers. Master your EASA, DGCA, and GCAA exams.",
@@ -20,6 +22,7 @@ export const metadata: Metadata = {
 export default async function Home() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  const modules = await getPublicModules()
 
   return (
     <>
@@ -31,7 +34,7 @@ export default async function Home() {
         <Features />
         <PerformanceSection />
         <ExcellenceSection />
-        <Modules user={user} />
+        <Modules user={user} initialModules={modules} />
         <DashboardPreview />
         <FinalCTA user={user} />
         <Footer />

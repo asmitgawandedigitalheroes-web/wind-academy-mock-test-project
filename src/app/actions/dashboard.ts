@@ -134,6 +134,39 @@ export async function getModules() {
   }))
 }
 
+export async function getPublicModules() {
+  const supabase = await createClient()
+
+  const { data: modules, error } = await supabase
+    .from('modules')
+    .select(`
+      id, 
+      name, 
+      description,
+      price,
+      image_url,
+      test_sets(id, is_paid)
+    `)
+    .eq('status', 'enabled')
+    .limit(6)
+
+  if (error) {
+    console.error('Error fetching public modules:', error)
+    return []
+  }
+
+  return modules.map(mod => ({
+    id: mod.id,
+    name: mod.name,
+    description: mod.description,
+    price: mod.price,
+    imageUrl: mod.image_url,
+    totalTests: mod.test_sets?.length || 0,
+    freeTests: mod.test_sets?.filter((t: any) => !t.is_paid).length || 0,
+    paidTests: mod.test_sets?.filter((t: any) => t.is_paid).length || 0
+  }))
+}
+
 export async function getModuleTests(moduleId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -284,13 +317,21 @@ export async function getTestData(testId: string) {
     .eq('test_set_id', testId)
     .order('sort_order', { ascending: true })
 
-  let questions = questionLinks?.map(link => {
-      const q = (link.questions as any)
+  let questions = (questionLinks || [])
+    .map((link: any) => {
+      const q = link.questions
+      if (!q || !q.question_text) return null
+      
       return {
-          ...q,
-          options: q.options.map((text: string, index: number) => ({ text, index }))
+        ...q,
+        options: Array.isArray(q.options) 
+          ? q.options
+              .map((text: string, index: number) => ({ text: String(text || '').trim(), index }))
+              .filter((opt: any) => opt.text !== '')
+          : []
       }
-  }) || []
+    })
+    .filter((q: any) => q !== null)
 
   // Randomization Logic
   if (test.randomize_questions || test.randomize_answers) {
