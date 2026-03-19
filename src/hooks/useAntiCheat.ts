@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 export interface ViolationLog {
   user_id: string
   exam_id: string
-  violation_type: 'printscreen' | 'tab_switch' | 'window_minimize' | 'fullscreen_exit' | 'right_click' | 'devtools' | 'copy_paste' | 'keyboard_shortcut'
+  violation_type: 'printscreen' | 'tab_switch' | 'window_minimize' | 'fullscreen_exit' | 'right_click' | 'devtools' | 'copy_paste' | 'keyboard_shortcut' | 'multi_monitor'
   timestamp: string
   details?: Record<string, any>
   test_set_id?: string // Added for consistency with DB schema
@@ -42,7 +42,7 @@ const DEFAULT_CONFIG: AntiCheatConfig = {
   enableRightClickBlock: true,
   enableTextSelectionBlock: true,
   enableCopyPasteDetection: true,
-  enableWatermark: true,
+  enableWatermark: false,
   maxViolations: 5,
   violationTimeout: 30
 }
@@ -60,6 +60,9 @@ export function useAntiCheat({
   const [showWarning, setShowWarning] = useState(false)
   const [warningMessage, setWarningMessage] = useState('')
   const [isTerminated, setIsTerminated] = useState(false)
+  const [isMultiMonitor, setIsMultiMonitor] = useState(false)
+  
+  const violationLoggedRef = useRef<boolean>(false)
   
   const violationTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const supabase = createClient(
@@ -452,35 +455,40 @@ export function useAntiCheat({
     // Multi-monitor detection
     const detectMultiMonitor = () => {
       const checkScreens = () => {
-        // Method 1: Screen count if browser supports it
         if (typeof window !== 'undefined' && window.screen) {
-          // Method 2: Position heuristic
           const screenLeft = window.screenX || window.screenLeft || 0
           const screenWidth = window.screen.width
           
-          // If window is shifted far to the left or right beyond one screen width
-          const isOffscreen = screenLeft < -10 || screenLeft > (screenWidth - 100)
+          const isOffscreen = screenLeft < -100 || screenLeft > (screenWidth - 100)
           
-          // Method 3: Dimensions heuristic
           let isExtended = false
           try {
-            isExtended = (window.screen as any).isExtended || false
+            isExtended = (window.screen as any).isExtended || 
+                        (typeof (window.screen as any).screenCount !== 'undefined' && (window.screen as any).screenCount > 1)
           } catch (e) {
-            // Some browsers throw permission errors on screen property access
             console.debug('isExtended check bypassed:', e)
           }
           
-          if (isOffscreen || isExtended) {
-            // Only log if it's one of the allowed types in the DB
-            // Removing multi_monitor for now as it's not in the DB check constraint
+          const detected = isOffscreen || isExtended
+          setIsMultiMonitor(detected)
+
+          if (detected && !violationLoggedRef.current) {
+            logViolation('multi_monitor', { 
+              screenLeft, 
+              screenWidth, 
+              isOffscreen, 
+              isExtended 
+            })
             showWarningMessage('⚠️ Multiple monitors or extended display detected! Please use only one screen.')
+            violationLoggedRef.current = true
+          } else if (!detected) {
+            violationLoggedRef.current = false
           }
         }
       }
 
-      // Check periodically
-      const intervalId = setInterval(checkScreens, 10000)
-      checkScreens() // Initial check
+      const intervalId = setInterval(checkScreens, 5000)
+      checkScreens()
       
       return () => clearInterval(intervalId)
     }
@@ -506,6 +514,7 @@ export function useAntiCheat({
     showWarning,
     warningMessage,
     isTerminated,
+    isMultiMonitor,
     violationCount: violations.length,
     maxViolations: finalConfig.maxViolations,
     requestFullscreen,

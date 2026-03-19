@@ -18,12 +18,12 @@ const Footer = async () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-16 mb-20">
           <div className="col-span-1 md:col-span-1">
             <Link href="/" className="flex items-center gap-3 group mb-8">
-              <div className="relative w-14 h-14 flex items-center justify-center overflow-hidden group-hover:-translate-y-1 transition-transform">
-                <Image src="/logo.png" alt="Wings Academy Logo" fill className="object-contain" />
+              <div className="relative w-14 h-14 flex items-center justify-center overflow-hidden bg-white rounded-full p-2.5 group-hover:-translate-y-1 transition-transform shadow-lg shadow-white/10">
+                <Image src="/logo.png" alt="Wings Academy Logo" fill className="object-contain p-1" />
               </div>
-              <div className="flex flex-col items-center">
+              <div className="flex flex-col items-start justify-center">
                 <span className="text-2xl font-black text-white leading-none tracking-tight">WINGS <span className="text-accent">ACADEMY</span></span>
-                <span className="text-[0.65rem] font-bold text-slate-400 uppercase tracking-widest mt-1 w-full text-center">Prepare for take off</span>
+                <span className="text-[0.65rem] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1.5 ml-0.5">Prepare for take off</span>
               </div>
             </Link>
             <p className="text-slate-400 mb-8 leading-relaxed font-medium">

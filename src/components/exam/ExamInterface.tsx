@@ -31,7 +31,7 @@ export function ExamInterface({
     enableFullscreenMode: true,
     enableRightClickBlock: true,
     enableTextSelectionBlock: true,
-    enableWatermark: true,
+    enableWatermark: false,
     maxViolations: 5,
     violationTimeout: 30 // minutes
   }

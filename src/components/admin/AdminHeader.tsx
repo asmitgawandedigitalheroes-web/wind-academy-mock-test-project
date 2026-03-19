@@ -185,7 +185,7 @@ export default function AdminHeader({ userEmail, onMenuClick }: { userEmail?: st
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">
             <p className="text-sm font-bold text-[#0f172a] leading-none">Admin Settings</p>
-            <p className="text-[0.7rem] font-medium text-slate-500 mt-1">{userEmail || 'admin@windacademy.com'}</p>
+            <p className="text-[0.7rem] font-medium text-slate-500 mt-1">{userEmail || 'admin@wingsacademy.com'}</p>
           </div>
           <div className="flex items-center gap-2">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">

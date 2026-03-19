@@ -61,6 +61,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
     showWarning,
     warningMessage,
     isTerminated,
+    isMultiMonitor,
     violationCount,
     maxViolations,
     requestFullscreen,
@@ -77,7 +78,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
       enableRightClickBlock: true,
       enableTextSelectionBlock: true,
       enableCopyPasteDetection: true,
-      enableWatermark: true,
+      enableWatermark: false,
       maxViolations: 5
     },
     onMaxViolationsReached: () => {
@@ -205,7 +206,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
           const opt = q.options![i]
           return {
             text: opt ? (typeof opt === 'string' ? opt : opt.text || '') : '',
-            originalIndex: i
+            originalIndex: opt && typeof opt === 'object' ? opt.index : i
           }
         })
       }
@@ -537,7 +538,26 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-8 flex-1">
         {/* Main Area */}
         <div className="xl:col-span-3 space-y-8">
-          <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-100 shadow-2xl min-h-[500px] flex flex-col">
+          {!currentQuestion ? (
+            <div className="bg-white p-12 md:p-20 rounded-[2.5rem] border border-slate-100 shadow-2xl text-center space-y-8 flex-1 flex flex-col items-center justify-center min-h-[500px]">
+              <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-3xl flex items-center justify-center mx-auto">
+                <AlertCircle className="w-10 h-10" />
+              </div>
+              <div className="space-y-3">
+                <h2 className="text-3xl font-black text-[#0f172a] uppercase tracking-tight">No Questions Available</h2>
+                <p className="text-slate-500 font-medium text-lg max-w-md mx-auto">
+                  We couldn&apos;t find any questions for this test set. Please check back later or contact support.
+                </p>
+              </div>
+              <button 
+                onClick={() => router.push('/dashboard/modules')}
+                className="bg-primary text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-primary/20"
+              >
+                Back to Modules
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-100 shadow-2xl min-h-[500px] flex flex-col">
             <div className="flex items-center justify-between mb-10">
               <div className="flex items-center gap-4">
                 <span className="px-4 py-2 bg-slate-50 border border-slate-100 text-[#0f172a] rounded-xl font-black text-xs uppercase tracking-widest">
@@ -545,10 +565,10 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                 </span>
                 <button
                   onClick={toggleFlag}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[0.65rem] font-black uppercase tracking-widest transition-all ${flaggedQuestions.has(currentQuestion.id) ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-slate-50 border-slate-100 text-slate-400 hover:text-amber-500'}`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[0.65rem] font-black uppercase tracking-widest transition-all ${flaggedQuestions.has(currentQuestion?.id) ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-slate-50 border-slate-100 text-slate-400 hover:text-amber-500'}`}
                 >
-                  <Flag className={`w-3.5 h-3.5 ${flaggedQuestions.has(currentQuestion.id) ? 'fill-current' : ''}`} />
-                  {flaggedQuestions.has(currentQuestion.id) ? 'Flagged' : 'Flag for Review'}
+                  <Flag className={`w-3.5 h-3.5 ${flaggedQuestions.has(currentQuestion?.id) ? 'fill-current' : ''}`} />
+                  {flaggedQuestions.has(currentQuestion?.id) ? 'Flagged' : 'Flag for Review'}
                 </button>
               </div>
             </div>
@@ -601,10 +621,14 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                   onClick={() => {
                     setAnswers(prev => {
                       const next = { ...prev }
-                      delete next[currentQuestion.id]
+                      if (currentQuestion?.id) {
+                        delete next[currentQuestion.id]
+                      }
                       return next
                     })
-                    saveProgress(currentQuestion.id, null, flaggedQuestions.has(currentQuestion.id))
+                    if (currentQuestion?.id) {
+                      saveProgress(currentQuestion.id, null, flaggedQuestions.has(currentQuestion.id))
+                    }
                   }}
                   className="px-6 py-4 text-xs font-black text-slate-400 hover:text-red-500 transition-colors flex items-center gap-2 uppercase tracking-widest"
                 >
@@ -626,7 +650,8 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
               </div>
             </div>
           </div>
-        </div>
+        )}
+      </div>
 
         {/* Sidebar */}
         <div className="xl:col-span-1">
@@ -635,6 +660,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
             
             <div className="grid grid-cols-4 sm:grid-cols-6 xl:grid-cols-4 gap-3 mb-8">
               {shuffledQuestions.map((q, idx) => {
+                if (!q) return null
                 const isCurrent = currentQuestionIdx === idx
                 const isAnswered = answers[q.id] !== undefined
                 const isFlagged = flaggedQuestions.has(q.id)
@@ -747,6 +773,32 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
               <button onClick={() => handleSubmit(false)} disabled={isSubmitting} className="py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-xs disabled:opacity-50">
                 {isSubmitting ? 'Submitting...' : 'Submit'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {isMultiMonitor && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[999] flex items-center justify-center p-6 text-center animate-in fade-in duration-500">
+          <div className="max-w-2xl w-full bg-white p-12 md:p-16 rounded-[3.5rem] border border-red-100 shadow-2xl space-y-8">
+            <div className="w-24 h-24 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center mx-auto mb-4">
+              <Monitor className="w-12 h-12" />
+            </div>
+            <div className="space-y-4">
+              <h1 className="text-3xl md:text-4xl font-black text-[#0f172a] tracking-tight uppercase">Multiple Monitors Detected</h1>
+              <p className="text-slate-500 font-medium text-lg leading-relaxed">
+                To maintain exam integrity, we have detected multiple screens or an extended display. 
+                <span className="block mt-4 text-[#0f172a] font-black">Please switch to a single monitor to continue your exam.</span>
+              </p>
+            </div>
+            
+            <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100 text-left">
+              <h3 className="text-amber-600 font-black text-xs uppercase tracking-widest mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" /> Why am I seeing this?
+              </h3>
+              <p className="text-xs text-amber-700/80 font-bold leading-relaxed">
+                Using multiple monitors is not allowed during the examination. This ensures a fair testing environment for all candidates. Once you disconnect your additional screens, this message will disappear automatically and you can resume.
+              </p>
             </div>
           </div>
         </div>
