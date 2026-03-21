@@ -99,14 +99,20 @@ export default async function ResultSummaryPage({ params }: PageProps) {
               >
                   Results History
               </Link>
-              <Link 
-                href={`/dashboard/test/${result.test_sets.id}`}
-                target="_blank"
-                className="flex-1 md:flex-none px-8 py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#152e75] transition-all hover:shadow-xl hover:shadow-primary/20 flex items-center justify-center gap-2 group"
-              >
-                  Retake Test
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
+              {result.hasReachedLimit ? (
+                <div className="flex-1 md:flex-none px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-not-allowed">
+                    Limit Reached
+                </div>
+              ) : (
+                <Link
+                  href={`/dashboard/test/${result.test_sets.id}`}
+                  target="_blank"
+                  className="flex-1 md:flex-none px-8 py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#152e75] transition-all hover:shadow-xl hover:shadow-primary/20 flex items-center justify-center gap-2 group"
+                >
+                    Retake Test
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
           </div>
       </div>
 

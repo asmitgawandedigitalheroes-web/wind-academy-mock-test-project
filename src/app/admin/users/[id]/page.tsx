@@ -2,24 +2,26 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { 
-  User, 
-  Mail, 
-  Calendar, 
-  Shield, 
-  CheckCircle2, 
-  XCircle, 
-  TrendingUp, 
-  Clock, 
+import {
+  User,
+  Mail,
+  Calendar,
+  Shield,
+  CheckCircle2,
+  XCircle,
+  TrendingUp,
+  Clock,
   BookOpen,
   Award,
   History,
-  LogOut
+  LogOut,
+  LockOpen,
+  Loader2
 } from 'lucide-react'
 import Link from 'next/link'
 import BackButton from '@/components/common/BackButton'
 import { createClient } from '@/utils/supabase/client'
-import { updateUserStatus, forceLogoutUser } from '@/app/actions/admin'
+import { updateUserStatus, forceLogoutUser, grantModuleAccess, getStudentGrantedModuleIds } from '@/app/actions/admin'
 import ConfirmationModal from '@/components/common/ConfirmationModal'
 
 export default function StudentProfilePage() {
@@ -32,6 +34,10 @@ export default function StudentProfilePage() {
   const [recentTests, setRecentTests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [paidModules, setPaidModules] = useState<any[]>([])
+  const [grantingModuleId, setGrantingModuleId] = useState<string | null>(null)
+  const [grantedModuleIds, setGrantedModuleIds] = useState<Set<string>>(new Set())
+  const [grantError, setGrantError] = useState<string | null>(null)
   const [modalConfig, setModalConfig] = useState<{
     isOpen: boolean,
     title: string,
@@ -103,7 +109,39 @@ export default function StudentProfilePage() {
       })
     }
 
+    // Fetch all modules that have paid tests so admin can grant module access
+    const { data: allModules } = await supabase
+      .from('modules')
+      .select('id, name, price')
+      .order('name', { ascending: true })
+
+    // Filter to only modules that have at least one paid test
+    const { data: paidTestModuleIds } = await supabase
+      .from('test_sets')
+      .select('module_id')
+      .eq('is_paid', true)
+
+    const moduleIdsWithPaidTests = new Set((paidTestModuleIds || []).map((t: any) => t.module_id))
+    const modulesWithPaidTests = (allModules || []).filter((m: any) => moduleIdsWithPaidTests.has(m.id))
+    setPaidModules(modulesWithPaidTests)
+
+    // Fetch which modules this student already has access to (via server action to bypass RLS)
+    const grantedIds = await getStudentGrantedModuleIds(id)
+    setGrantedModuleIds(new Set(grantedIds))
+
     setLoading(false)
+  }
+
+  const handleGrantAccess = async (moduleId: string) => {
+    setGrantingModuleId(moduleId)
+    setGrantError(null)
+    const res = await grantModuleAccess(id, moduleId)
+    if (res.error) {
+      setGrantError(res.error)
+    } else {
+      setGrantedModuleIds(prev => new Set([...prev, moduleId]))
+    }
+    setGrantingModuleId(null)
   }
 
   const handleStatusToggle = () => {
@@ -353,7 +391,63 @@ export default function StudentProfilePage() {
         </div>
       </div>
 
-      <ConfirmationModal 
+      {/* Grant Module Access Section */}
+      {paidModules.length > 0 && (
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-primary/5 overflow-hidden">
+          <div className="p-8 border-b border-slate-50 flex items-center gap-3">
+            <LockOpen className="w-6 h-6 text-primary" />
+            <div>
+              <h3 className="text-xl font-black text-[#0f172a]">Grant Module Access</h3>
+              <p className="text-xs text-slate-400 font-medium mt-0.5">Unlock all paid tests in a module for this student — useful for testing or after verifying Ziina payment.</p>
+            </div>
+          </div>
+          {grantError && (
+            <div className="mx-8 mt-4 p-3 bg-red-50 text-red-600 text-sm font-bold rounded-2xl border border-red-100 flex items-center justify-between gap-2">
+              <span>{grantError}</span>
+              <button onClick={() => setGrantError(null)} className="text-red-400 hover:text-red-600 font-black text-lg leading-none">×</button>
+            </div>
+          )}
+          <div className="divide-y divide-slate-50">
+            {paidModules.map((mod: any) => {
+              const hasAccess = grantedModuleIds.has(mod.id)
+              const isGranting = grantingModuleId === mod.id
+              return (
+                <div key={mod.id} className="px-8 py-5 flex items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-[#0f172a] truncate">{mod.name}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Unlocks all paid tests in this module</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {mod.price > 0 && (
+                      <span className="text-xs font-black text-slate-400">AED {mod.price}</span>
+                    )}
+                    {hasAccess ? (
+                      <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[0.65rem] font-black uppercase tracking-widest bg-green-100 text-green-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Access Granted
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleGrantAccess(mod.id)}
+                        disabled={isGranting}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[0.65rem] font-black uppercase tracking-widest bg-primary text-white hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isGranting ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Granting...</>
+                        ) : (
+                          <><LockOpen className="w-3.5 h-3.5" /> Grant Access</>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <ConfirmationModal
         isOpen={modalConfig.isOpen}
         title={modalConfig.title}
         message={modalConfig.message}

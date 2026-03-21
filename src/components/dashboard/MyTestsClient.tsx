@@ -67,7 +67,7 @@ export default function MyTestsClient({ initialTests }: MyTestsClientProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
         {filteredTests.map((test) => (
-          <div key={test.id} className="group bg-white rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-primary/5 overflow-hidden hover:border-primary/20 transition-all duration-300 flex flex-col">
+          <div key={test.id} className="group bg-white rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-primary/5 overflow-hidden hover:border-primary/20 transition-all duration-300 flex flex-col h-full">
             <div className="p-6 md:p-8 flex-1">
               <div className="flex items-start gap-4 mb-6">
                 <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform bg-accent/10 text-accent`}>

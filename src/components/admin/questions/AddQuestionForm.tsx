@@ -14,7 +14,7 @@ interface QuestionFormProps {
 export default function AddQuestionForm({ modules, onSuccess, onCancel }: QuestionFormProps) {
   const [question, setQuestion] = useState('')
   const [options, setOptions] = useState(['', '', '', ''])
-  const [type, setType] = useState<'single' | 'multiple'>('single')
+  const [type, setType] = useState<'single' | 'multiple' | 'essay'>('single')
   const [correctIndices, setCorrectIndices] = useState<number[]>([0])
   const [moduleId, setModuleId] = useState('')
   const [explanation, setExplanation] = useState('')
@@ -123,7 +123,17 @@ export default function AddQuestionForm({ modules, onSuccess, onCancel }: Questi
             >
               Multiple Choice
             </button>
+            <button 
+              type="button"
+              onClick={() => setType('essay')}
+              className={`flex-1 py-3 px-4 rounded-xl font-black text-[0.65rem] uppercase tracking-widest transition-all ${type === 'essay' ? 'bg-white shadow-md text-primary' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Essay
+            </button>
           </div>
+
+          {type !== 'essay' && (
+            <>
 
           <label className="block text-[0.65rem] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
             Options ({type === 'multiple' ? 'Select all correct ones' : 'Select the correct one'})
@@ -159,6 +169,8 @@ export default function AddQuestionForm({ modules, onSuccess, onCancel }: Questi
               />
             </div>
           ))}
+            </>
+          )}
         </div>
 
         <div>

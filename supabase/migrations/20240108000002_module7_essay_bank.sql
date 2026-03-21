@@ -1,0 +1,32 @@
+-- Populate Module 7 Essay Questions Bank
+DO $$
+DECLARE
+    module_id_v UUID;
+BEGIN
+    SELECT id INTO module_id_v FROM modules WHERE name ILIKE '%Module 7%' OR name ILIKE '%Essay%' LIMIT 1;
+
+    IF module_id_v IS NOT NULL THEN
+        INSERT INTO questions (module_id, question_text, question_type, options, correct_options, difficulty_level)
+        VALUES 
+        (module_id_v, 'Riveted Joints: Explain the purpose of riveted joints in aircraft structures. Describe the types of rivets used, rivet installation procedure, common defects in riveting, and inspection methods used to ensure joint integrity.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Bearings: Describe the types of bearings used in aircraft mechanical systems. Explain their construction, lubrication requirements, common failure modes, and the procedures for inspection and maintenance.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Control Cables: Explain the construction and function of aircraft control cable systems. Describe the inspection procedures, common defects such as corrosion or broken strands, cable tension adjustment, and maintenance precautions.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Pipes and Tubing: Discuss the types of pipes and tubing used in aircraft systems. Explain materials used, bending procedures, flaring methods, and the inspection requirements to ensure safe operation.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Flexible Hoses in Aircraft Systems: Describe the construction and application of flexible hoses in aircraft hydraulic and fuel systems. Explain installation practices, minimum bend radius requirements, inspection procedures, and common causes of hose failure.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Fasteners and Locking Devices: Explain the different types of aircraft fasteners such as bolts, nuts, screws, and studs. Discuss the methods used to secure fasteners (lockwire, split pins, self-locking nuts, tab washers) and the importance of correct torque application.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Gears and Gear Drives: Describe the construction and operation of gear systems used in aircraft mechanical assemblies. Explain gear inspection procedures, backlash measurement, lubrication requirements, and common causes of gear wear or failure.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Corrosion in Aircraft Structures: Explain the types of corrosion that occur in aircraft metallic structures. Discuss the causes, detection methods, prevention techniques, and maintenance practices used to control corrosion.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Sheet Metal Forming and Repair: Describe the process of sheet metal layout, bending, and forming used in aircraft structures. Explain bend allowance, common defects in sheet metal work, and repair methods used to restore structural integrity.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Mechanical Component Inspection: Discuss the general inspection procedures for aircraft mechanical components. Include visual inspection, non-destructive testing methods, and the importance of using approved maintenance data during inspections.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Electrical Wiring Interconnection System (EWIS): Explain the concept of Electrical Wiring Interconnection System (EWIS) used in aircraft. Describe the components included in EWIS, common causes of wiring deterioration, inspection procedures, and maintenance practices used to ensure system reliability.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Wiring Installation and Routing: Discuss the procedures and precautions followed when installing and routing aircraft electrical wiring. Explain the importance of wire support, clamping, separation from other systems, and protection against mechanical damage.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Electrical Connectors and Terminations: Explain the types of electrical connectors and terminals used in aircraft systems. Describe the procedures for crimping, connector installation, inspection, and common faults that may occur in electrical connections.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Bonding and Grounding in Aircraft: Describe the purpose of electrical bonding and grounding in aircraft. Explain the methods used to establish bonding connections, inspection techniques, and the consequences of poor bonding.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Aircraft Electrical Wire Identification: Explain the methods used for identifying aircraft electrical wires. Describe the importance of wire marking, color coding, and documentation when performing maintenance or troubleshooting electrical systems.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Avionics Test Equipment: Discuss the types of test equipment used in avionics maintenance. Explain the importance of calibration, proper handling, and precautions to avoid damage to sensitive electronic components.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Electrostatic Discharge (ESD) Protection: Explain the effects of electrostatic discharge on aircraft electronic components. Describe the preventive measures used during avionics maintenance to protect sensitive equipment from ESD damage.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Inspection of Aircraft Electrical Wiring: Describe the inspection procedures for aircraft wiring systems. Include typical defects such as insulation damage, overheating, corrosion, and improper routing, and explain how these defects are corrected.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Line Replaceable Units (LRU): Explain the concept of Line Replaceable Units (LRU) in avionics systems. Describe the advantages of LRUs, procedures for removal and installation, and post-installation checks required to ensure correct system operation.', 'essay', '[]', '{}', 'medium'),
+        (module_id_v, 'Maintenance Documentation in Avionics Work: Discuss the importance of using approved maintenance documentation when performing avionics maintenance. Explain how manuals, wiring diagrams, and maintenance procedures help ensure safe and accurate troubleshooting and repair.', 'essay', '[]', '{}', 'medium');
+    END IF;
+END $$;

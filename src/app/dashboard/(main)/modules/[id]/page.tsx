@@ -99,29 +99,31 @@ export default async function ModuleDetailPage({ params }: PageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 shrink-0 w-full md:w-[14rem]">
                 {test.lockoutMinutes > 0 ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="px-6 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-red-100 flex items-center gap-2">
+                  <div className="flex flex-col items-center gap-2 w-full">
+                    <div className="w-full px-6 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-red-100 flex items-center justify-center gap-2">
                       <LockIcon className="w-4 h-4" />
                       Locked
                     </div>
                     <span className="text-[0.65rem] font-bold text-red-400">Try in {test.lockoutMinutes} mins</span>
                   </div>
                 ) : test.isLimitReached ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="px-6 py-3 bg-amber-50 text-amber-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-amber-100 flex items-center gap-2">
+                  <div className="flex flex-col items-center gap-2 w-full">
+                    <div className="w-full px-6 py-3 bg-amber-50 text-amber-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-amber-100 flex items-center justify-center gap-2">
                       <LockIcon className="w-4 h-4" />
                       Limit Reached
                     </div>
                     <span className="text-[0.65rem] font-bold text-amber-400">Max attempts used</span>
                   </div>
                 ) : test.isUnlocked ? (
-                  <StartTestButton testId={test.id} status="Start" />
+                  <div className="w-full">
+                    <StartTestButton testId={test.id} status="Start" />
+                  </div>
                 ) : (
                   <Link 
                     href={`/dashboard/checkout/module/${typedModule.id}`}
-                    className="w-full md:w-auto px-8 py-4 bg-slate-50 text-[#0f172a] hover:bg-slate-100 rounded-2xl font-black text-xs uppercase tracking-widest border border-slate-100 flex items-center justify-center gap-3 transition-all"
+                    className="w-full px-8 py-4 bg-slate-50 text-[#0f172a] hover:bg-slate-100 rounded-2xl font-black text-xs uppercase tracking-widest border border-slate-100 flex items-center justify-center gap-3 transition-all"
                   >
                     Unlock to access
                     <LockIcon className="w-5 h-5 text-amber-500" />

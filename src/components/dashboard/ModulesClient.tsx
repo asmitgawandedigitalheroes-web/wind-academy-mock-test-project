@@ -11,6 +11,11 @@ interface Module {
   description: string
   price: number
   totalTests: number
+  freeTests: number
+  paidTests: number
+  imageUrl?: string
+  iconUrl?: string
+  isUnlocked?: boolean
 }
 
 interface ModulesClientProps {
@@ -24,15 +29,27 @@ export default function ModulesClient({ initialModules }: ModulesClientProps) {
   const [filter, setFilter] = useState<PriceFilter>('all')
 
   const filteredModules = useMemo(() => {
-    return initialModules.filter(mod => {
-      const matchesSearch = mod.name.toLowerCase().includes(search.toLowerCase())
-      const matchesFilter =
-        filter === 'all' ||
-        (filter === 'free' && mod.price === 0) ||
-        (filter === 'paid' && mod.price > 0)
+    return initialModules
+      .filter(mod => {
+        const matchesSearch = (mod.name || '').toLowerCase().includes(search.toLowerCase()) || 
+                             (mod.description || '').toLowerCase().includes(search.toLowerCase())
+        
+        const isPaid = mod.price > 0 || (mod.paidTests && (mod.paidTests > 0))
+        const isFree = mod.price === 0 && (mod.paidTests === 0 || !mod.paidTests)
 
-      return matchesSearch && matchesFilter
-    })
+        const matchesFilter =
+          filter === 'all' ||
+          (filter === 'free' && isFree) ||
+          (filter === 'paid' && isPaid)
+
+        return matchesSearch && matchesFilter
+      })
+      .sort((a, b) => {
+        // Prioritize unlocked modules at the top
+        if (a.isUnlocked && !b.isUnlocked) return -1
+        if (!a.isUnlocked && b.isUnlocked) return 1
+        return 0
+      })
   }, [initialModules, search, filter])
 
   return (
@@ -67,15 +84,20 @@ export default function ModulesClient({ initialModules }: ModulesClientProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
         {filteredModules.map((module) => (
-          <div key={module.id} className="group bg-white rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-primary/5 overflow-hidden hover:scale-[1.01] transition-all duration-500">
-            <div className="p-6 md:p-8">
+          <div key={module.id} className="group bg-white rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-primary/5 overflow-hidden hover:scale-[1.01] transition-all duration-500 flex flex-col h-full">
+            <div className="p-6 md:p-8 flex flex-col h-full">
               <div className="flex items-center justify-between mb-6 md:mb-8">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 md:w-14 md:h-14 bg-accent/10 text-accent rounded-xl md:rounded-2xl flex items-center justify-center shrink-0">
                     <Library className="w-6 h-6 md:w-7 md:h-7" />
                   </div>
                   <div>
-                    <h3 className="text-lg md:text-xl font-black text-[#0f172a] leading-tight capitalize">{module.name}</h3>
+                    <div className="flex items-center gap-2">
+                       <h3 className="text-lg md:text-xl font-black text-[#0f172a] leading-tight capitalize">{module.name}</h3>
+                       {module.isUnlocked && (
+                         <span className="px-2 py-0.5 bg-green-50 text-green-600 text-[10px] font-black rounded-md border border-green-100 uppercase">Unlocked</span>
+                       )}
+                    </div>
                     <p className="text-[0.6rem] md:text-[0.65rem] font-black text-slate-400 uppercase tracking-widest mt-1">Mock Tests</p>
                   </div>
                 </div>
@@ -85,8 +107,22 @@ export default function ModulesClient({ initialModules }: ModulesClientProps) {
 
               <div className="bg-slate-50 p-4 md:p-5 rounded-[1.5rem] md:rounded-[2rem] border border-slate-100 mb-6 md:mb-8 flex items-center justify-between">
                 <div>
-                  <p className="text-[0.6rem] md:text-[0.65rem] font-black uppercase tracking-widest text-slate-400 mb-1">Learning Track</p>
-                  <p className="text-lg md:text-xl font-black text-[#0f172a]">{module.totalTests} Mock Tests</p>
+                  <p className="text-[0.6rem] md:text-[0.65rem] font-black uppercase tracking-widest text-slate-400 mb-1">Mock tests</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg md:text-xl font-black text-[#0f172a]">{module.totalTests}</p>
+                    <div className="flex gap-1.5 ml-1">
+                      {module.freeTests > 0 && (
+                        <span className="px-2 py-0.5 bg-green-50 text-green-600 text-[10px] font-black rounded-md border border-green-100 uppercase tracking-tighter">
+                          {module.freeTests} Free
+                        </span>
+                      )}
+                      {module.paidTests > 0 && (
+                        <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-black rounded-md border border-amber-100 uppercase tracking-tighter">
+                          {module.paidTests} Paid
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="w-10 h-10 md:w-12 md:h-12 bg-accent/10 rounded-xl md:rounded-2xl flex items-center justify-center text-accent shadow-sm border border-accent/10">
                   <Library className="w-5 h-5 md:w-6 md:h-6" />
@@ -101,9 +137,9 @@ export default function ModulesClient({ initialModules }: ModulesClientProps) {
                   View Tests
                   <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
                 </Link>
-                {module.price > 0 && (
-                  <button className="w-12 h-12 md:w-14 md:h-14 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl flex items-center justify-center text-accent hover:border-accent/20 transition-all">
-                    <Lock className="w-5 h-5" />
+                {(module.price > 0 || module.paidTests > 0) && (
+                  <button className={`w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center transition-all border ${module.isUnlocked ? 'bg-green-50 border-green-100 text-green-600' : 'bg-slate-50 border-slate-100 text-accent hover:border-accent/20'}`}>
+                    {module.isUnlocked ? <BookOpen className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
                   </button>
                 )}
               </div>

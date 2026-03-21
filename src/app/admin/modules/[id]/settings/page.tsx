@@ -29,6 +29,7 @@ export default function ModuleSettingsPage() {
     const [categories, setCategories] = useState<{ id: string, name: string }[]>([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [saveError, setSaveError] = useState<string | null>(null)
     const [formData, setFormData] = useState<any>({
         name: '',
         code: '',
@@ -73,20 +74,33 @@ export default function ModuleSettingsPage() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
+        setSaveError(null)
+
+        if (!formData.name.trim()) {
+            setSaveError('Module name is required.')
+            return
+        }
+
+        const priceVal = parseFloat(formData.price) || 0
+        if (formData.enable_purchase && priceVal <= 0) {
+            setSaveError('Please enter a valid price greater than 0 when purchase is enabled.')
+            return
+        }
+
         setSaving(true)
         const dbStatus = formData.status === 'published' ? 'enabled' : formData.status === 'draft' ? 'disabled' : formData.status
-        const res = await updateModuleSettings(id, { 
-            ...formData, 
+        const res = await updateModuleSettings(id, {
+            ...formData,
             status: dbStatus,
             free_tests_limit: parseInt(formData.free_tests_limit) || 0,
             paid_tests_limit: parseInt(formData.paid_tests_limit) || 0,
-            price: parseFloat(formData.price) || 0
+            price: priceVal
         } as any)
         setSaving(false)
         if (res.success) {
             router.replace(`/admin/modules/${id}`)
         } else {
-            alert(res.error || 'Failed to save settings')
+            setSaveError(res.error || 'Failed to save settings.')
         }
     }
 
@@ -131,6 +145,13 @@ export default function ModuleSettingsPage() {
                     </button>
                 </div>
             </div>
+
+            {saveError && (
+                <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold border border-red-100 flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 shrink-0" />
+                    {saveError}
+                </div>
+            )}
 
             <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-20">
                 {/* Left Column - Main Settings */}
@@ -231,8 +252,8 @@ export default function ModuleSettingsPage() {
                                 </label>
                             </div>
                             {formData.enable_purchase && (
-                                    <InputGroup 
-                                        label="Module Price (₹)"
+                                    <InputGroup
+                                        label="Module Price (AED)"
                                         icon={<CreditCard className="w-4 h-4" />}
                                         type="text"
                                         numericOnly
@@ -339,17 +360,23 @@ function InputGroup({ label, icon, numericOnly, ...props }: { label: string, ico
                         {icon}
                     </div>
                 )}
-                <input 
+                <input
                     {...props}
                     className={`w-full ${icon ? 'pl-14' : 'px-6'} py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-primary/20 focus:ring-8 focus:ring-primary/5 transition-all duration-300 font-bold text-[#0f172a] placeholder:text-slate-300 hover:bg-white`}
                     onKeyDown={(e) => {
                         if (!numericOnly) return;
-
                         const isControlKey = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Escape'].includes(e.key);
                         const isNumber = /[0-9]/.test(e.key);
                         const isDecimal = e.key === '.' && props.type === 'text';
-
                         if (!isNumber && !isControlKey && !isDecimal) {
+                            e.preventDefault();
+                        }
+                    }}
+                    onPaste={(e) => {
+                        if (!numericOnly) return;
+                        const pasted = e.clipboardData.getData('text');
+                        const allowed = props.type === 'text' ? /^[0-9]*\.?[0-9]*$/ : /^[0-9]*$/;
+                        if (!allowed.test(pasted)) {
                             e.preventDefault();
                         }
                     }}

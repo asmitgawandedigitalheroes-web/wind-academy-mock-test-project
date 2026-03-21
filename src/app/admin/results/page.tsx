@@ -13,7 +13,9 @@ import {
   Calendar,
   User,
   BookOpen,
-  ChevronDown
+  ChevronDown,
+  PenLine,
+  Star
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
@@ -22,7 +24,7 @@ export default function ResultsPage() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pass' | 'fail'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pass' | 'fail' | 'under_review' | 'graded'>('all')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const supabase = createClient()
 
@@ -41,6 +43,7 @@ export default function ResultsPage() {
         user_id,
         test_set_id,
         score,
+        status,
         completed_at,
         profiles (
           full_name,
@@ -102,16 +105,19 @@ export default function ResultsPage() {
 
     const matchesStatus =
       statusFilter === 'all' ||
-      (statusFilter === 'pass' && res.score >= (res.test_sets?.pass_percentage || 70)) ||
-      (statusFilter === 'fail' && res.score < (res.test_sets?.pass_percentage || 70))
+      (statusFilter === 'pass' && res.score >= (res.test_sets?.pass_percentage || 70) && !res.status?.includes('review') && res.status !== 'graded') ||
+      (statusFilter === 'fail' && res.score < (res.test_sets?.pass_percentage || 70) && !res.status?.includes('review') && res.status !== 'graded') ||
+      (statusFilter === 'under_review' && res.status === 'under_review') ||
+      (statusFilter === 'graded' && res.status === 'graded')
 
     return matchesSearch && matchesStatus
   })
 
   // Group stats
   const totalAttempts = results.length
-  const passCount = results.filter(r => r.score >= (r.test_sets?.pass_percentage || 70)).length
+  const passCount = results.filter(r => r.score >= (r.test_sets?.pass_percentage || 70) && r.status !== 'under_review').length
   const passRate = totalAttempts > 0 ? Math.round((passCount / totalAttempts) * 100) : 0
+  const underReviewCount = results.filter(r => r.status === 'under_review').length
 
   // Calculate today's tests
   const today = new Date()
@@ -134,7 +140,7 @@ export default function ResultsPage() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-primary/5">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-primary/5 rounded-2xl flex items-center justify-center">
@@ -154,6 +160,20 @@ export default function ResultsPage() {
             <div>
               <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Pass Rate</p>
               <h3 className="text-2xl font-black text-[#0f172a]">{passRate}%</h3>
+            </div>
+          </div>
+        </div>
+        <div
+          onClick={() => setStatusFilter('under_review')}
+          className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-primary/5 cursor-pointer hover:border-amber-200 transition-all"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center">
+              <PenLine className="w-6 h-6 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Under Review</p>
+              <h3 className="text-2xl font-black text-[#0f172a]">{underReviewCount}</h3>
             </div>
           </div>
         </div>
@@ -193,6 +213,8 @@ export default function ResultsPage() {
               <option value="all">All Status</option>
               <option value="pass">Passed</option>
               <option value="fail">Failed</option>
+              <option value="under_review">Under Review</option>
+              <option value="graded">Graded</option>
             </select>
             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
@@ -230,6 +252,8 @@ export default function ResultsPage() {
               ) : (
                 filteredResults.map((result) => {
                   const isPass = result.score >= (result.test_sets?.pass_percentage || 70)
+                  const isUnderReview = result.status === 'under_review'
+                  const isGraded = result.status === 'graded'
                   return (
                     <tr key={result.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="px-8 py-6">
@@ -249,8 +273,12 @@ export default function ResultsPage() {
                         </div>
                       </td>
                       <td className="px-8 py-6 text-center">
-                        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl font-black text-sm ${isPass ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                          {result.score}%
+                        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl font-black text-sm ${
+                          isUnderReview ? 'bg-amber-50 text-amber-600' :
+                          isGraded ? 'bg-blue-50 text-blue-600' :
+                          isPass ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                        }`}>
+                          {isUnderReview ? '—' : `${Math.round(result.score)}%`}
                         </div>
                       </td>
                       <td className="px-8 py-6">
@@ -260,10 +288,22 @@ export default function ResultsPage() {
                         </div>
                       </td>
                       <td className="px-8 py-6">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.65rem] font-black uppercase tracking-wider ${isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {isPass ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                          {isPass ? 'Pass' : 'Fail'}
-                        </span>
+                        {isUnderReview ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.65rem] font-black uppercase tracking-wider bg-amber-100 text-amber-700">
+                            <PenLine className="w-3 h-3" />
+                            Under Review
+                          </span>
+                        ) : isGraded ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.65rem] font-black uppercase tracking-wider bg-blue-100 text-blue-700">
+                            <Star className="w-3 h-3" />
+                            Graded
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.65rem] font-black uppercase tracking-wider ${isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {isPass ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                            {isPass ? 'Pass' : 'Fail'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2 transition-opacity">
@@ -309,6 +349,8 @@ export default function ResultsPage() {
         ) : (
           filteredResults.map((result) => {
             const isPass = result.score >= (result.test_sets?.pass_percentage || 70)
+            const isUnderReview = result.status === 'under_review'
+            const isGraded = result.status === 'graded'
             return (
               <div key={result.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl shadow-primary/5 space-y-4">
                 <div className="flex items-start justify-between">
@@ -320,8 +362,12 @@ export default function ResultsPage() {
                       <p className="text-sm font-black text-[#0f172a]">{result.profiles?.full_name}</p>
                     </div>
                   </div>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${isPass ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                    {result.score}%
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${
+                    isUnderReview ? 'bg-amber-50 text-amber-600' :
+                    isGraded ? 'bg-blue-50 text-blue-600' :
+                    isPass ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                  }`}>
+                    {isUnderReview ? '—' : `${Math.round(result.score)}%`}
                   </div>
                 </div>
 
@@ -334,10 +380,22 @@ export default function ResultsPage() {
                       <Calendar className="w-3 h-3" />
                       {new Date(result.created_at).toLocaleDateString()}
                     </span>
-                    <span className={`flex items-center gap-1 ${isPass ? 'text-green-600' : 'text-red-500'}`}>
-                      {isPass ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                      {isPass ? 'Passed' : 'Failed'}
-                    </span>
+                    {isUnderReview ? (
+                      <span className="flex items-center gap-1 text-amber-600">
+                        <PenLine className="w-3 h-3" />
+                        Under Review
+                      </span>
+                    ) : isGraded ? (
+                      <span className="flex items-center gap-1 text-blue-600">
+                        <Star className="w-3 h-3" />
+                        Graded
+                      </span>
+                    ) : (
+                      <span className={`flex items-center gap-1 ${isPass ? 'text-green-600' : 'text-red-500'}`}>
+                        {isPass ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                        {isPass ? 'Passed' : 'Failed'}
+                      </span>
+                    )}
                   </div>
                 </div>
 

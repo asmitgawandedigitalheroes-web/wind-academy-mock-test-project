@@ -33,12 +33,14 @@ export default function EditQuestionPage() {
 
   const [test, setTest] = useState<any>(null)
   const [questionText, setQuestionText] = useState('')
-  const [questionType, setQuestionType] = useState<'single' | 'multiple'>('single')
+  const [questionType, setQuestionType] = useState<'single' | 'multiple' | 'essay'>('single')
   const [options, setOptions] = useState<string[]>(['', '', '', ''])
   const [correctOptions, setCorrectOptions] = useState<number[]>([0])
   const [explanation, setExplanation] = useState('')
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
   const [marks, setMarks] = useState<number>(1)
+  const [minLength, setMinLength] = useState<number | ''>('')
+  const [maxLength, setMaxLength] = useState<number | ''>('')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -63,6 +65,8 @@ export default function EditQuestionPage() {
         setExplanation(questionData.explanation || '')
         setDifficulty(questionData.difficulty_level || 'medium')
         setMarks(questionData.marks ?? 1)
+        setMinLength(questionData.min_length ?? '')
+        setMaxLength(questionData.max_length ?? '')
         setImageUrl(questionData.image_url || null)
       }
       setPageLoading(false)
@@ -115,28 +119,55 @@ export default function EditQuestionPage() {
     setLoading(true)
     setError(null)
 
-    if (options.some(opt => !String(opt || '').trim())) {
-      setError('Please fill in all options')
+    if (!questionText.trim()) {
+      setError('Question text is required.')
       setLoading(false)
       return
     }
 
-    if (correctOptions.length === 0) {
-      setError('Please select at least one correct option')
+    const marksNum = parseFloat(marks as any)
+    if (isNaN(marksNum) || marksNum <= 0) {
+      setError('Marks must be a positive number greater than 0.')
       setLoading(false)
       return
+    }
+
+    if (questionType === 'essay') {
+      const minVal = minLength === '' ? null : Number(minLength)
+      const maxVal = maxLength === '' ? null : Number(maxLength)
+      if (minVal !== null && maxVal !== null && minVal >= maxVal) {
+        setError('Minimum word limit must be less than maximum word limit.')
+        setLoading(false)
+        return
+      }
+    }
+
+    if (questionType !== 'essay') {
+      if (options.some(opt => !String(opt || '').trim())) {
+        setError('Please fill in all options.')
+        setLoading(false)
+        return
+      }
+
+      if (correctOptions.length === 0) {
+        setError('Please select at least one correct option.')
+        setLoading(false)
+        return
+      }
     }
 
     try {
       const result = await updateQuestion(questionId, testId, {
         question_text: questionText,
         question_type: questionType,
-        options,
-        correct_options: correctOptions,
+        options: questionType === 'essay' ? [] : options,
+        correct_options: questionType === 'essay' ? [] : correctOptions,
         difficulty_level: difficulty,
         explanation,
         marks: parseFloat(marks as any) || 0,
-        image_url: imageUrl
+        image_url: imageUrl,
+        min_length: minLength === '' ? null : Number(minLength),
+        max_length: maxLength === '' ? null : Number(maxLength)
       })
 
       if (result.error) {
@@ -232,6 +263,7 @@ export default function EditQuestionPage() {
                 >
                   <option value="single">Single Answer</option>
                   <option value="multiple">Multiple Answers</option>
+                  <option value="essay">Essay</option>
                 </select>
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                   <ChevronLeft className="w-5 h-5 -rotate-90" />
@@ -259,65 +291,100 @@ export default function EditQuestionPage() {
           </div>
 
           {/* Options */}
-          <Section title="Answer Options" icon={<CheckCircle2 className="w-5 h-5" />}>
-            <div className="space-y-4">
-              <p className="text-xs text-slate-400 font-bold ml-1">Click the circle/checkbox icon to mark the correct answer(s).</p>
-              {options.map((option, idx) => {
-                const isCorrect = correctOptions.includes(idx)
-                return (
-                  <div key={idx} className="flex gap-3">
-                    <div className="relative group flex-1">
-                      <div className={`absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs ${isCorrect ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-white text-slate-400 border border-slate-200'}`}>
-                        {String.fromCharCode(65 + idx)}
-                      </div>
-                      <input
-                        required
-                        type="text"
-                        value={option}
-                        onChange={(e) => handleOptionChange(idx, e.target.value)}
-                        placeholder={`Option ${String.fromCharCode(65 + idx)}`}
-                        className={`w-full pl-16 pr-14 py-4.5 rounded-2xl border-2 outline-none transition-all font-bold ${isCorrect ? 'bg-green-50/30 border-green-200 ring-4 ring-green-100/20' : 'bg-slate-50/50 border-slate-100 focus:bg-white focus:border-primary/20'}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (questionType === 'single') {
-                            setCorrectOptions([idx])
-                          } else {
-                            if (correctOptions.includes(idx)) {
-                              setCorrectOptions(correctOptions.filter(i => i !== idx))
+          {questionType !== 'essay' && (
+            <Section title="Answer Options" icon={<CheckCircle2 className="w-5 h-5" />}>
+              <div className="space-y-4">
+                <p className="text-xs text-slate-400 font-bold ml-1">Click the circle/checkbox icon to mark the correct answer(s).</p>
+                {options.map((option, idx) => {
+                  const isCorrect = correctOptions.includes(idx)
+                  return (
+                    <div key={idx} className="flex gap-3">
+                      <div className="relative group flex-1">
+                        <div className={`absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs ${isCorrect ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                          {String.fromCharCode(65 + idx)}
+                        </div>
+                        <input
+                          required
+                          type="text"
+                          value={option}
+                          onChange={(e) => handleOptionChange(idx, e.target.value)}
+                          placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                          className={`w-full pl-16 pr-14 py-4.5 rounded-2xl border-2 outline-none transition-all font-bold ${isCorrect ? 'bg-green-50/30 border-green-200 ring-4 ring-green-100/20' : 'bg-slate-50/50 border-slate-100 focus:bg-white focus:border-primary/20'}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (questionType === 'single') {
+                              setCorrectOptions([idx])
                             } else {
-                              setCorrectOptions([...correctOptions, idx])
+                              if (correctOptions.includes(idx)) {
+                                setCorrectOptions(correctOptions.filter(i => i !== idx))
+                              } else {
+                                setCorrectOptions([...correctOptions, idx])
+                              }
                             }
-                          }
-                        }}
-                        className={`absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${isCorrect ? 'text-green-500 bg-green-100' : 'text-slate-300 hover:text-slate-400 hover:bg-slate-100'}`}
-                      >
-                        {isCorrect ? <CheckCircle2 className="w-5 h-5" /> : (questionType === 'single' ? <Circle className="w-5 h-5" /> : <Square className="w-5 h-5" />)}
-                      </button>
+                          }}
+                          className={`absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${isCorrect ? 'text-green-500 bg-green-100' : 'text-slate-300 hover:text-slate-400 hover:bg-slate-100'}`}
+                        >
+                          {isCorrect ? <CheckCircle2 className="w-5 h-5" /> : (questionType === 'single' ? <Circle className="w-5 h-5" /> : <Square className="w-5 h-5" />)}
+                        </button>
+                      </div>
+                      {options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removeOption(idx)}
+                          className="p-3 self-center hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shrink-0"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
-                    {options.length > 2 && (
-                      <button
-                        type="button"
-                        onClick={() => removeOption(idx)}
-                        className="p-3 self-center hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shrink-0"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    )}
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={addOption}
+                  className="mt-2 w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black hover:border-primary/30 hover:bg-slate-50 hover:text-primary transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add Another Option
+                </button>
+              </div>
+            </Section>
+          )}
+
+          {/* Essay Limits */}
+          {questionType === 'essay' && (
+            <Section title="Essay Content Limits" icon={<FileText className="w-5 h-5" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                <div className="space-y-3">
+                  <label className="text-xs text-slate-400 font-bold ml-1 uppercase tracking-wider">Minimum length (Words)</label>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={minLength}
+                      onChange={(e) => setMinLength(e.target.value === '' ? '' : parseInt(e.target.value))}
+                      placeholder="e.g. 100"
+                      className="w-full p-4.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-[#0f172a] hover:bg-white"
+                    />
                   </div>
-                )
-              })}
-              <button
-                type="button"
-                onClick={addOption}
-                className="mt-2 w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black hover:border-primary/30 hover:bg-slate-50 hover:text-primary transition-all flex items-center justify-center gap-2"
-              >
-                <Plus className="w-5 h-5" />
-                Add Another Option
-              </button>
-            </div>
-          </Section>
+                </div>
+                <div className="space-y-3">
+                  <label className="text-xs text-slate-400 font-bold ml-1 uppercase tracking-wider">Maximum length (Words)</label>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      value={maxLength}
+                      onChange={(e) => setMaxLength(e.target.value === '' ? '' : parseInt(e.target.value))}
+                      placeholder="e.g. 500"
+                      className="w-full p-4.5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-[#0f172a] hover:bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 font-bold ml-1">Set the suggested length for the essay answer in words.</p>
+            </Section>
+          )}
 
           {/* Explanation */}
           <Section title="Explanation (Optional)" icon={<HelpCircle className="w-5 h-5" />}>

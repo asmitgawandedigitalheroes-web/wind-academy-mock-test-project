@@ -5,15 +5,19 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { getURL } from '@/utils/url'
 
-export async function addModule(formData: { 
-  name: string, 
-  categoryId?: string, 
-  code?: string, 
-  description?: string, 
-  free_test_limit?: number, 
-  paid_test_limit?: number, 
-  status?: string 
+export async function addModule(formData: {
+  name: string,
+  categoryId?: string,
+  code?: string,
+  description?: string,
+  free_test_limit?: number,
+  paid_test_limit?: number,
+  status?: string
 }) {
+  if (!formData.name || !formData.name.trim()) {
+    return { error: 'Module name is required.' }
+  }
+
   const supabase = await createClient()
 
   const { error } = await supabase
@@ -73,8 +77,10 @@ export async function addQuestion(formData: {
   options: string[],
   correct_options?: number[],
   correct_option_index?: number,
-  question_type?: 'single' | 'multiple',
-  explanation?: string
+  question_type?: 'single' | 'multiple' | 'essay',
+  explanation?: string,
+  min_length?: number | null,
+  max_length?: number | null
 }) {
   const supabase = await createClient()
 
@@ -90,7 +96,9 @@ export async function addQuestion(formData: {
       question_type: qType,
       correct_options: correctOptions,
       correct_option_index: qType === 'single' ? correctOptions[0] : null,
-      explanation: formData.explanation
+      explanation: formData.explanation,
+      min_length: formData.min_length || null,
+      max_length: formData.max_length || null
     }])
 
   if (error) {
@@ -211,7 +219,7 @@ export async function addTest(formData: {
   passPercentage?: number,
   targetQuestions?: number,
   attemptsAllowed?: number,
-  testType?: 'short' | 'full',
+  testType?: 'short' | 'full' | 'essay',
   isPaid?: boolean,
   price?: number,
   marksPerQuestion?: number,
@@ -438,13 +446,15 @@ export async function addQuestionToTest(formData: {
   testSetId: string,
   moduleId: string,
   question_text: string,
-  question_type: 'single' | 'multiple',
+  question_type: 'single' | 'multiple' | 'essay',
   options: string[],
   correct_options: number[],
   difficulty_level?: 'easy' | 'medium' | 'hard',
   explanation?: string,
   marks?: number,
-  image_url?: string | null
+  image_url?: string | null,
+  min_length?: number | null,
+  max_length?: number | null
 }) {
   const supabase = await createClient()
 
@@ -461,7 +471,9 @@ export async function addQuestionToTest(formData: {
       correct_option_index: formData.question_type === 'single' ? formData.correct_options[0] : null,
       explanation: formData.explanation,
       marks: formData.marks ?? 1,
-      image_url: formData.image_url || null
+      image_url: formData.image_url || null,
+      min_length: formData.min_length || null,
+      max_length: formData.max_length || null
     }])
     .select()
     .single()
@@ -573,13 +585,15 @@ export async function getTestDetails(testId: string) {
 
 export async function updateQuestion(questionId: string, testSetId: string, formData: {
   question_text: string,
-  question_type: 'single' | 'multiple',
+  question_type: 'single' | 'multiple' | 'essay',
   options: string[],
   correct_options: number[],
   difficulty_level?: 'easy' | 'medium' | 'hard',
   explanation?: string,
   marks?: number,
-  image_url?: string | null
+  image_url?: string | null,
+  min_length?: number | null,
+  max_length?: number | null
 }) {
   const supabase = await createClient()
 
@@ -594,7 +608,9 @@ export async function updateQuestion(questionId: string, testSetId: string, form
       correct_option_index: formData.question_type === 'single' ? formData.correct_options[0] : null,
       explanation: formData.explanation,
       marks: formData.marks ?? 1,
-      image_url: formData.image_url || null
+      image_url: formData.image_url || null,
+      min_length: formData.min_length || null,
+      max_length: formData.max_length || null
     })
     .eq('id', questionId)
 
@@ -770,24 +786,28 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
       const difficulty = (String(q.difficulty || q.Difficulty || 'medium')).toLowerCase() as 'easy' | 'medium' | 'hard';
       const expl = q.explanation || q.Explanation;
       const marks = parseInt(String(q.marks || q.Marks || '1')) || 1;
+      const minLen = parseInt(String(q.min_length || q.MinLength || '')) || null;
+      const maxLen = parseInt(String(q.max_length || q.MaxLength || '')) || null;
 
-      if (!qText || options.length < 2) {
+      // Friendly type mapping
+      let type: 'single' | 'multiple' | 'essay' = 'single';
+      const qTypeLower = String(qType || '').toLowerCase();
+      if (qTypeLower === 'essay') {
+        type = 'essay';
+      } else if (qTypeLower.includes('multiple') || qTypeLower === 'multiple choice') {
+        type = 'multiple';
+      }
+
+      if (!qText || (type !== 'essay' && options.length < 2)) {
         console.error('Invalid question data (missing text or options):', q)
         errorCount++
         continue
       }
       
-      // Friendly type mapping
-      let type: 'single' | 'multiple' = 'single';
-      const qTypeLower = String(qType || '').toLowerCase();
-      if (qTypeLower.includes('multiple') || qTypeLower === 'multiple choice') {
-        type = 'multiple';
-      }
-
       // Parse correct options (A, B, C or numbers)
-      const correctParts = correctStr.split(/[|,]/).map(p => p.trim().toUpperCase()).filter(p => p !== '')
+      const correctParts = type === 'essay' ? [] : correctStr.split(/[|,]/).map(p => p.trim().toUpperCase()).filter(p => p !== '')
       
-      const correctOptionsIndices = correctParts.map(part => {
+      const correctOptionsIndices = type === 'essay' ? [] : correctParts.map(part => {
         if (/^[A-E]$/.test(part)) {
           return part.charCodeAt(0) - 65;
         }
@@ -795,14 +815,14 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
         return !isNaN(num) ? num : -1;
       }).filter(idx => idx >= 0 && idx < options.length);
 
-      if (correctOptionsIndices.length === 0) {
+      if (type !== 'essay' && correctOptionsIndices.length === 0) {
         console.error('No valid correct options detected for:', qText, 'Correct string was:', correctStr)
         errorCount++
         continue
       }
 
       // Auto-promote to multiple if more than one correct index is provided
-      const finalType = correctOptionsIndices.length > 1 ? 'multiple' : type;
+      const finalType = type === 'essay' ? 'essay' : (correctOptionsIndices.length > 1 ? 'multiple' : type);
 
       const { data: qData, error: qError } = await supabase
         .from('questions')
@@ -815,7 +835,9 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
           correct_option_index: finalType === 'single' ? correctOptionsIndices[0] : null,
           difficulty_level: ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium',
           explanation: expl || null,
-          marks: marks
+          marks: marks,
+          min_length: minLen,
+          max_length: maxLen
         }])
         .select()
         .single()
@@ -1078,38 +1100,70 @@ export async function uploadQuestionImage(file: File) {
 export async function deleteModule(moduleId: string) {
   const supabase = await createClient()
 
-  // 1. Get all tests for this module
-  const { data: tests } = await supabase
-    .from('test_sets')
-    .select('id')
-    .eq('module_id', moduleId)
+  try {
+    // 1. Get all tests for this module
+    const { data: tests, error: testsError } = await supabase
+      .from('test_sets')
+      .select('id')
+      .eq('module_id', moduleId)
 
-  const testIds = (tests || []).map(t => t.id)
+    if (testsError) {
+      console.error('Error fetching tests for module:', testsError)
+      return { error: 'Failed to fetch associated tests: ' + testsError.message }
+    }
 
-  if (testIds.length > 0) {
-    // 2. Delete test_questions links
-    await supabase.from('test_questions').delete().in('test_set_id', testIds)
-    // 3. Delete test_sets
-    await supabase.from('test_sets').delete().in('id', testIds)
+    const testIds = (tests || []).map(t => t.id)
+
+    if (testIds.length > 0) {
+      // 2. Delete test_questions links
+      const { error: tqError } = await supabase
+        .from('test_questions')
+        .delete()
+        .in('test_set_id', testIds)
+      if (tqError) {
+        console.error('Error deleting test_questions:', tqError)
+        return { error: 'Failed to remove question links: ' + tqError.message }
+      }
+
+      // 3. Delete test_sets
+      const { error: tsError } = await supabase
+        .from('test_sets')
+        .delete()
+        .in('id', testIds)
+      if (tsError) {
+        console.error('Error deleting test_sets:', tsError)
+        return { error: 'Failed to delete tests: ' + tsError.message }
+      }
+    }
+
+    // 4. Delete questions
+    const { error: qError } = await supabase
+      .from('questions')
+      .delete()
+      .eq('module_id', moduleId)
+    if (qError) {
+      console.error('Error deleting questions:', qError)
+      return { error: 'Failed to delete questions: ' + qError.message }
+    }
+
+    // 5. Delete module
+    const { error } = await supabase
+      .from('modules')
+      .delete()
+      .eq('id', moduleId)
+
+    if (error) {
+      console.error('Error deleting module:', error)
+      return { error: error.message }
+    }
+
+    revalidatePath('/admin/questions')
+    revalidatePath('/admin/modules')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Unexpected error deleting module:', err)
+    return { error: err?.message || 'An unexpected error occurred while deleting the module.' }
   }
-
-  // 4. Delete questions
-  await supabase.from('questions').delete().eq('module_id', moduleId)
-
-  // 5. Delete module
-  const { error } = await supabase
-    .from('modules')
-    .delete()
-    .eq('id', moduleId)
-
-  if (error) {
-    console.error('Error deleting module:', error)
-    return { error: error.message }
-  }
-
-  revalidatePath('/admin/questions')
-  revalidatePath('/admin/modules')
-  return { success: true }
 }
 
 export async function deleteCourse(courseId: string) {
@@ -1416,20 +1470,202 @@ export async function checkDatabaseHealth() {
     const end = Date.now()
     
     if (error) throw error
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       latency: `${end - start}ms`,
       status: 'Operational',
       timestamp: new Date().toISOString()
     }
   } catch (err: any) {
     console.error('Database health check failed:', err)
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: err.message || 'Database connection error',
       status: 'Down',
       timestamp: new Date().toISOString()
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Essay Grading
+// ---------------------------------------------------------------------------
+
+// Admin grades a submitted essay result.
+// Updates the test_results row → DB trigger fires → edge function sends email.
+export async function gradeEssayResult(
+  resultId: string,
+  score: number,
+  feedback: string
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  const { error } = await supabase
+    .from('test_results')
+    .update({
+      score,
+      feedback,
+      status: 'graded',
+      graded_by: user.id
+    })
+    .eq('id', resultId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/admin/results')
+  revalidatePath(`/admin/results/${resultId}`)
+  return { success: true }
+}
+
+// ---------------------------------------------------------------------------
+// Admin Grant Test Access
+// ---------------------------------------------------------------------------
+
+// Admin manually unlocks a paid test for a specific student (e.g. for testing
+// or after verifying a Ziina payment). Creates a completed payment record.
+export async function grantTestAccess(userId: string, testId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  // Use service role client to bypass RLS for inserting payments for other users
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Get test title for the notification message
+  const { data: test } = await supabase
+    .from('test_sets')
+    .select('title, module_id')
+    .eq('id', testId)
+    .single()
+
+  if (!test) return { error: 'Test not found' }
+
+  // Check if access already granted to avoid duplicates (use service client to bypass RLS)
+  const { data: existing } = await serviceClient
+    .from('payments')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('test_set_id', testId)
+    .eq('status', 'completed')
+    .maybeSingle()
+
+  if (existing) return { error: 'Student already has access to this test' }
+
+  // Create a completed payment record using service role (bypasses RLS)
+  const { error: payErr } = await serviceClient
+    .from('payments')
+    .insert({
+      user_id: userId,
+      test_set_id: testId,
+      amount: 0,
+      status: 'completed',
+      transaction_id: `ADMIN-GRANT-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+    })
+
+  if (payErr) return { error: payErr.message }
+
+  // Notify the student (use service client to bypass RLS for inserting notification)
+  await serviceClient.from('notifications').insert({
+    user_id: userId,
+    type: 'payment_success',
+    title: 'Test Access Granted',
+    message: `An admin has unlocked "${test.title}" for you. You can now start the test.`
+  })
+
+  revalidatePath(`/admin/users/${userId}`)
+  revalidatePath(`/dashboard/modules/${test.module_id}`)
+  return { success: true }
+}
+
+// Fetch which paid tests a student already has access to (uses service role to bypass RLS)
+export async function getStudentGrantedTestIds(userId: string): Promise<string[]> {
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const { data } = await serviceClient
+    .from('payments')
+    .select('test_set_id')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+  return (data || []).map((p: any) => p.test_set_id)
+}
+
+// Fetch which modules a student already has access to (uses service role to bypass RLS)
+export async function getStudentGrantedModuleIds(userId: string): Promise<string[]> {
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const { data } = await serviceClient
+    .from('payments')
+    .select('module_id')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .not('module_id', 'is', null)
+  return (data || []).map((p: any) => p.module_id)
+}
+
+// Admin manually unlocks an entire module for a student (bypasses Ziina payment).
+export async function grantModuleAccess(userId: string, moduleId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Get module title for notification
+  const { data: moduleInfo } = await supabase
+    .from('modules')
+    .select('name, price')
+    .eq('id', moduleId)
+    .single()
+
+  if (!moduleInfo) return { error: 'Module not found' }
+
+  // Check if already granted
+  const { data: existing } = await serviceClient
+    .from('payments')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('module_id', moduleId)
+    .eq('status', 'completed')
+    .maybeSingle()
+
+  if (existing) return { error: 'Student already has access to this module' }
+
+  // Create completed payment record
+  const { error: payErr } = await serviceClient.from('payments').insert({
+    user_id: userId,
+    module_id: moduleId,
+    amount: 0,
+    status: 'completed',
+    transaction_id: `ADMIN-MOD-GRANT-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+  })
+
+  if (payErr) return { error: payErr.message }
+
+  // Notify the student
+  await serviceClient.from('notifications').insert({
+    user_id: userId,
+    type: 'payment_success',
+    title: 'Module Access Granted',
+    message: `An admin has unlocked the entire "${moduleInfo.name}" module for you. All paid tests are now available.`
+  })
+
+  revalidatePath(`/admin/users/${userId}`)
+  revalidatePath(`/dashboard/modules/${moduleId}`)
+  return { success: true }
 }
