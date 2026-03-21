@@ -30,6 +30,7 @@ interface TestInterfaceProps {
     marks_per_question?: number;
     negative_marks?: number;
     module_name?: string;
+    test_type?: 'short' | 'full' | 'essay';
     questions?: any[];
   }
   user?: {
@@ -53,6 +54,8 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
   const [startConfirmText, setStartConfirmText] = useState('')
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false)
   const [isViolationTerminated, setIsViolationTerminated] = useState(false)
+  const [questionTimeLeft, setQuestionTimeLeft] = useState(20 * 60) // 20 minutes default for Essay
+  const [essayContent, setEssayContent] = useState<Record<string, string>>({})
 
   // Anti-cheat system
   const {
@@ -130,21 +133,22 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
               ;[optIndices[i], optIndices[j]] = [optIndices[j], optIndices[i]]
           }
 
-          shuffledOpts[q.id] = optIndices.map((i: number) => {
+          shuffledOpts[q.id] = optIndices.map((i: number, pos: number) => {
             const opt = q.options![i]
             let text = ''
-            let originalIndex = i
+            let originalIndex = typeof i === 'number' && !isNaN(i) ? i : pos
 
-            if (typeof opt === 'string') {
-              text = opt
+            if (opt !== null && (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean')) {
+              text = String(opt)
             }
             else if (opt && typeof opt === 'object') {
               text = opt.text || opt.option || opt.value || String(Object.values(opt)[0] || '')
-              originalIndex = ('index' in opt || 'originalIndex' in opt) ? (opt.index ?? opt.originalIndex) : i
+              const extractedIndex = ('index' in opt || 'originalIndex' in opt) ? (opt.index ?? opt.originalIndex) : i
+              originalIndex = typeof extractedIndex === 'number' && !isNaN(extractedIndex) ? extractedIndex : pos
             }
 
             return {
-              text: String(text || '').trim() || `Option ${i + 1}`,
+              text: String(text || '').trim() || `Option ${pos + 1}`,
               originalIndex: originalIndex
             }
           })
@@ -153,10 +157,20 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
 
       // Fallback if shuffledOpts[q.id] is still missing or empty
       if (!shuffledOpts[q.id] || shuffledOpts[q.id].length === 0) {
-        shuffledOpts[q.id] = (q.options || []).map((opt: any, i: number) => ({
-          text: (typeof opt === 'string' ? opt : (opt?.text || opt?.option || `Option ${i + 1}`)),
-          originalIndex: (opt?.index ?? opt?.originalIndex ?? i)
-        }))
+        shuffledOpts[q.id] = (q.options || []).map((opt: any, i: number) => {
+          let text = ''
+          if (opt !== null && (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean')) {
+            text = String(opt)
+          } else if (opt && typeof opt === 'object') {
+            text = opt.text || opt.option || opt.value || `Option ${i + 1}`
+          } else {
+            text = `Option ${i + 1}`
+          }
+          return {
+            text: text,
+            originalIndex: (opt?.index ?? opt?.originalIndex ?? i)
+          }
+        })
       }
     })
 
@@ -259,6 +273,35 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
     return () => clearInterval(timer)
   }, [timeLeft, handleSubmit, isExamStarted])
 
+  // Per-question timer for Essay
+  useEffect(() => {
+    if (!isExamStarted || test.test_type !== 'essay') return
+    
+    if (questionTimeLeft <= 0) {
+      // Auto-advance or submit if last question
+      if (currentQuestionIdx < (shuffledQuestions.length || originalQuestions.length) - 1) {
+        setCurrentQuestionIdx(prev => prev + 1)
+        setQuestionTimeLeft(20 * 60)
+      } else {
+        handleSubmit(true)
+      }
+      return
+    }
+
+    const timer = setInterval(() => {
+      setQuestionTimeLeft(prev => prev - 1)
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [questionTimeLeft, isExamStarted, test.test_type, currentQuestionIdx, (shuffledQuestions.length || originalQuestions.length)])
+
+  // Reset question timer on question change
+  useEffect(() => {
+    if (test.test_type === 'essay') {
+      setQuestionTimeLeft(20 * 60)
+    }
+  }, [currentQuestionIdx, test.test_type])
+
 
   // Track visited questions
   useEffect(() => {
@@ -273,7 +316,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
     }
   }, [isExamStarted, currentQuestionIdx, currentQuestion?.id, shuffledQuestions.length])
 
-  const saveProgress = useCallback(async (qId: string, selection: number | number[] | null, flagged: boolean) => {
+  const saveProgress = useCallback(async (qId: string, selection: number | number[] | string | null, flagged: boolean) => {
     if (!sessionId) return
     try {
       await updateTestProgress(sessionId, qId, selection, flagged)
@@ -303,6 +346,19 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
     // Defer the side effect outside of the React state updater
     setTimeout(() => {
       saveProgress(currentQuestion.id, newSelection, flaggedQuestions.has(currentQuestion.id))
+    }, 0)
+  }
+
+  const handleEssayChange = (content: string) => {
+    const words = content.trim().split(/\s+/).filter(Boolean).length
+    const maxLength = currentQuestion?.max_length || 1000
+    if (words > maxLength) return // Enforce limit
+
+    setEssayContent(prev => ({ ...prev, [currentQuestion.id]: content }))
+    
+    // Save progress periodically
+    setTimeout(() => {
+      saveProgress(currentQuestion.id, content, flaggedQuestions.has(currentQuestion.id))
     }, 0)
   }
 
@@ -344,6 +400,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
           if (progress.answers) {
             const loadedAnswers: Record<string, number | number[]> = {}
             const loadedFlagged = new Set<string>()
+            const loadedEssays: Record<string, string> = {}
             progress.answers.forEach((a: any) => {
               if (a.selected_options && a.selected_options.length > 0) {
                 loadedAnswers[a.question_id] = a.selected_options
@@ -351,9 +408,11 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                 loadedAnswers[a.question_id] = a.selected_option_index
               }
               if (a.is_flagged) loadedFlagged.add(a.question_id)
+              if (a.essay_answer) loadedEssays[a.question_id] = a.essay_answer
             })
             setAnswers(loadedAnswers)
             setFlaggedQuestions(loadedFlagged)
+            setEssayContent(loadedEssays)
           }
         }
       }
@@ -577,8 +636,15 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
         <div className="flex items-center gap-4">
           <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border ${timeLeft < 300 ? 'bg-red-50 border-red-100 text-red-600' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
             <Clock className="w-5 h-5" />
-            <span className="text-xl font-black tabular-nums">{formatTime(timeLeft)}</span>
+            <span className="text-xl font-black tabular-nums">
+              {test.test_type === 'essay' ? formatTime(questionTimeLeft) : formatTime(timeLeft)}
+            </span>
           </div>
+          {test.test_type === 'essay' && (
+             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 font-bold text-[0.65rem] uppercase tracking-widest">
+               <span>Total: {formatTime(timeLeft)}</span>
+             </div>
+          )}
           <button
             onClick={() => setShowConfirmSubmit(true)}
             className="bg-primary text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all"
@@ -647,7 +713,31 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
+                {currentQuestion?.question_type === 'essay' || test.test_type === 'essay' ? (
+                  <div className="space-y-6 flex-1 flex flex-col">
+                     <div className="flex items-center justify-between px-2">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[0.65rem] font-black text-slate-400 uppercase tracking-widest">
+                            Word Count: {essayContent[currentQuestion.id]?.trim().split(/\s+/).filter(Boolean).length || 0} / {currentQuestion?.max_length || 1000}
+                          </span>
+                          {(currentQuestion?.min_length || currentQuestion?.max_length) && (
+                            <span className="text-[10px] text-slate-400 font-bold italic">
+                              {currentQuestion.min_length ? `Min: ${currentQuestion.min_length} words` : ''} 
+                              {currentQuestion.min_length && currentQuestion.max_length ? ' • ' : ''}
+                              {currentQuestion.max_length ? `Max: ${currentQuestion.max_length} words` : ''}
+                            </span>
+                          )}
+                        </div>
+                     </div>
+                    <textarea
+                      value={essayContent[currentQuestion.id] || ''}
+                      onChange={(e) => handleEssayChange(e.target.value)}
+                      placeholder="Type your essay here..."
+                      className="flex-1 w-full p-8 bg-slate-50 border border-slate-100 rounded-[2rem] text-lg font-medium leading-relaxed focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary transition-all resize-none min-h-[400px]"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
                   {(shuffledOptions[currentQuestion?.id] || []).map((option, idx) => {
                     const isSelected = Array.isArray(answers[currentQuestion?.id])
                       ? (answers[currentQuestion?.id] as number[]).includes(option.originalIndex)
@@ -667,11 +757,12 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                     )
                   })}
                 </div>
-              </div>
+              )}
+            </div>
 
               <div className="flex items-center justify-between mt-12 pt-8 border-t border-slate-50">
                 <button
-                  disabled={currentQuestionIdx === 0}
+                  disabled={currentQuestionIdx === 0 || test.test_type === 'essay'}
                   onClick={() => setCurrentQuestionIdx(prev => prev - 1)}
                   className="p-4 bg-slate-50 text-slate-400 rounded-2xl hover:bg-slate-100 hover:text-primary transition-all disabled:opacity-30"
                 >
@@ -697,6 +788,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                     <RotateCcw className="w-4 h-4" /> Clear Selection
                   </button>
                   <button
+                    disabled={test.test_type === 'essay' && questionTimeLeft > 0}
                     onClick={() => {
                       if (currentQuestionIdx < shuffledQuestions.length - 1) {
                         setCurrentQuestionIdx(prev => prev + 1)
@@ -704,7 +796,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                         setShowConfirmSubmit(true)
                       }
                     }}
-                    className="bg-primary text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-primary/80 transition-all flex items-center gap-3"
+                    className="bg-primary text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-primary/80 transition-all flex items-center gap-3 disabled:opacity-50"
                   >
                     {currentQuestionIdx === shuffledQuestions.length - 1 ? 'Review & Submit' : 'Save & Next'}
                     <ChevronRight className="w-5 h-5 transition-transform" />
@@ -737,8 +829,12 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                 return (
                   <button
                     key={idx}
-                    onClick={() => setCurrentQuestionIdx(idx)}
-                    className={`aspect-square rounded-xl flex items-center justify-center font-black text-xs transition-all border ${statusClass}`}
+                    onClick={() => {
+                      if (test.test_type === 'essay') return
+                      setCurrentQuestionIdx(idx)
+                    }}
+                    disabled={test.test_type === 'essay'}
+                    className={`aspect-square rounded-xl flex items-center justify-center font-black text-xs transition-all border ${statusClass} ${test.test_type === 'essay' ? 'cursor-not-allowed opacity-80' : ''}`}
                   >
                     {idx + 1}
                   </button>

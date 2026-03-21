@@ -30,7 +30,7 @@ export default function AddTestModal({
   const [attemptsAllowed, setAttemptsAllowed] = useState<any>(1)
   const [marksPerQuestion, setMarksPerQuestion] = useState<any>(1)
   const [negativeMarks, setNegativeMarks] = useState<any>(0)
-  const [testType, setTestType] = useState<'short' | 'full'>('full')
+  const [testType, setTestType] = useState<'short' | 'full' | 'essay'>('full')
   const [isPaid, setIsPaid] = useState(false)
   const [price, setPrice] = useState<any>(0)
   const [loading, setLoading] = useState(false)
@@ -138,6 +138,22 @@ export default function AddTestModal({
                     ({Math.max(0, paidLimit - paidCount)} remaining)
                 </p>
             </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Test Format</label>
+          <div className="grid grid-cols-3 gap-3">
+            {['short', 'full', 'essay'].map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setTestType(type as any)}
+                className={`py-3 rounded-xl border-2 font-black text-[0.65rem] uppercase tracking-widest transition-all ${testType === type ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 text-slate-400 hover:bg-slate-50'}`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
         </div>
 
         {isLimitReached && (

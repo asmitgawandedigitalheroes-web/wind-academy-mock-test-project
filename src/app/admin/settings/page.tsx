@@ -34,13 +34,25 @@ export default function SettingsPage() {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
+  // Save message state
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
   // Cache Flush State
   const [isFlushing, setIsFlushing] = useState(false)
   const [flushMessage, setFlushMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const flushTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // DB Health State
   const [isCheckingHealth, setIsCheckingHealth] = useState(false)
   const [healthStatus, setHealthStatus] = useState<{ success: boolean, latency?: string, status: string, timestamp: string, error?: string } | null>(null)
+
+  // Notification toggles state
+  const [notifToggles, setNotifToggles] = useState<Record<string, boolean>>({
+    'New User Registration': true,
+    'Payment Success': true,
+    'Failed Test Attempt': false,
+    'Server Health': true,
+  })
 
   // Form State
   const [settings, setSettings] = useState<any>({
@@ -101,17 +113,19 @@ export default function SettingsPage() {
   const handleSave = async () => {
     try {
       setIsSaving(true)
+      setSaveMessage(null)
       const res = await updatePlatformSettings({
           ...settings,
           default_test_price: parseInt(settings.default_test_price as any) || 0
       })
       if (res.success) {
-        // Show success state
+        setSaveMessage({ type: 'success', text: 'Settings saved successfully.' })
       } else {
-        alert('Error saving settings: ' + res.error)
+        setSaveMessage({ type: 'error', text: res.error || 'Failed to save settings.' })
       }
     } catch (err) {
       console.error(err)
+      setSaveMessage({ type: 'error', text: 'An unexpected error occurred.' })
     } finally {
       setIsSaving(false)
     }
@@ -163,8 +177,8 @@ export default function SettingsPage() {
       const res = await flushPlatformCache()
       if (res.success) {
         setFlushMessage({ type: 'success', text: 'Cache flushed successfully!' })
-        // Clear message after 3 seconds
-        setTimeout(() => setFlushMessage(null), 3000)
+        if (flushTimeoutRef.current) clearTimeout(flushTimeoutRef.current)
+        flushTimeoutRef.current = setTimeout(() => setFlushMessage(null), 3000)
       } else {
         setFlushMessage({ type: 'error', text: res.error || 'Failed to flush cache.' })
       }
@@ -210,18 +224,30 @@ export default function SettingsPage() {
           <h1 className="text-4xl font-black text-[#0f172a] tracking-tight">Platform Settings</h1>
           <p className="text-slate-500 font-medium mt-1">Manage global configurations and preferences.</p>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={isSaving}
-          className="bg-primary text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:bg-[#152e75] hover:scale-[1.02] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-        >
-          {isSaving ? (
-            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-          ) : (
-            <Save className="w-5 h-5" />
+        <div className="flex flex-col items-end gap-3">
+          {saveMessage && (
+            <div className={`text-sm font-bold px-4 py-2 rounded-2xl border flex items-center gap-2 ${
+              saveMessage.type === 'success'
+                ? 'bg-green-50 text-green-700 border-green-100'
+                : 'bg-red-50 text-red-600 border-red-100'
+            }`}>
+              {saveMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              {saveMessage.text}
+            </div>
           )}
-          {isSaving ? 'Saving...' : 'Save Changes'}
-        </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="bg-primary text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:bg-[#152e75] hover:scale-[1.02] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            ) : (
+              <Save className="w-5 h-5" />
+            )}
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -448,11 +474,11 @@ export default function SettingsPage() {
 
             {activeTab === 'payments' && (
               <div className="space-y-8">
-                <div className="p-6 bg-yellow-50 rounded-[2rem] border border-yellow-100 flex gap-4">
-                  <AlertTriangle className="w-6 h-6 text-yellow-600 shrink-0" />
+                <div className="p-6 bg-green-50 rounded-[2rem] border border-green-100 flex gap-4">
+                  <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0" />
                   <div>
-                    <h4 className="text-sm font-black text-yellow-800">Integration Pending</h4>
-                    <p className="text-xs text-yellow-700 font-medium mt-1">Stripe integration is currently in sandbox mode. No live transactions will be processed.</p>
+                    <h4 className="text-sm font-black text-green-800">Ziina Payment Active</h4>
+                    <p className="text-xs text-green-700 font-medium mt-1">Payments are processed via Ziina. Students are directed to pay.ziina.com and must notify admin to unlock test access.</p>
                   </div>
                 </div>
 
@@ -463,7 +489,7 @@ export default function SettingsPage() {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Default Paid Test Price (₹)</label>
+                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Default Paid Test Price (AED)</label>
                         <input 
                             type="text" 
                             value={settings.default_test_price}
@@ -473,11 +499,11 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                         <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Currency Code</label>
-                        <input 
-                            type="text" 
-                            defaultValue="INR"
+                        <input
+                            type="text"
+                            defaultValue="AED"
                             disabled
-                            className="w-full p-4 bg-slate-100 border border-slate-100 rounded-2xl outline-none text-slate-400 font-bold" 
+                            className="w-full p-4 bg-slate-100 border border-slate-100 rounded-2xl outline-none text-slate-400 font-bold"
                         />
                     </div>
                   </div>
@@ -596,14 +622,20 @@ export default function SettingsPage() {
                     Admin Alerts
                   </h3>
                   <div className="space-y-3">
-                    {['New User Registration', 'Payment Success', 'Failed Test Attempt', 'Server Health'].map((notif) => (
+                    {(Object.keys(notifToggles) as string[]).map((notif) => {
+                      const isOn = notifToggles[notif]
+                      return (
                         <div key={notif} className="flex items-center justify-between p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                            <span className="text-sm font-bold text-[#0f172a]">{notif}</span>
-                            <div className="w-12 h-6 bg-primary rounded-full relative cursor-pointer">
-                                <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full transition-all"></div>
-                            </div>
+                          <span className="text-sm font-bold text-[#0f172a]">{notif}</span>
+                          <div
+                            onClick={() => setNotifToggles(prev => ({ ...prev, [notif]: !prev[notif] }))}
+                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors duration-300 ${isOn ? 'bg-primary' : 'bg-slate-300'}`}
+                          >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${isOn ? 'right-1' : 'left-1'}`}></div>
+                          </div>
                         </div>
-                    ))}
+                      )
+                    })}
                   </div>
               </div>
             )}

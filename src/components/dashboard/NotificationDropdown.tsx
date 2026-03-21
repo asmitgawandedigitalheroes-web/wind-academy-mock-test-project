@@ -123,11 +123,12 @@ export default function NotificationDropdown() {
                               {n.title}
                             </p>
                             {!n.is_read && (
-                              <button 
+                              <button
                                 onClick={(e) => handleMarkAsRead(n.id, e)}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-primary/10 rounded transition-all"
+                                className="p-1.5 bg-primary/10 hover:bg-primary/20 rounded-lg transition-all shrink-0"
+                                title="Mark as read"
                               >
-                                <Check className="w-3 h-3 text-primary" />
+                                <Check className="w-3.5 h-3.5 text-primary" />
                               </button>
                             )}
                           </div>

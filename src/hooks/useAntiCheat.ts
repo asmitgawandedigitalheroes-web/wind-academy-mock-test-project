@@ -100,13 +100,7 @@ export function useAntiCheat({
         })
 
       if (error) {
-        console.error('Failed to log violation. Supabase error:', error)
-        console.error('Violation data sent:', {
-          user_id: userId,
-          exam_id: examId,
-          violation_type: violationType,
-          details
-        })
+        console.debug('Failed to log violation (non-critical):', error.message || error)
       }
 
       // Update local state
@@ -242,10 +236,9 @@ export function useAntiCheat({
         })
         showWarningMessage('⚠️ Tab switching detected! This violation has been logged.')
       } else {
-        // Automatically attempt to re-enter fullscreen when returning to tab
-        if (finalConfig.enableFullscreenMode) {
-          // Direct call might fail, so we also add a one-time click listener
-          requestFullscreen()
+        // Re-enter fullscreen when returning to tab — needs a user gesture,
+        // so we attach a one-time click listener instead of calling directly
+        if (finalConfig.enableFullscreenMode && !document.fullscreenElement) {
           window.addEventListener('click', function reenter() {
             requestFullscreen()
             window.removeEventListener('click', reenter)
@@ -255,10 +248,9 @@ export function useAntiCheat({
     }
 
     const handleFocus = () => {
-      // Automatically attempt to re-enter fullscreen when window gets focus
-      if (finalConfig.enableFullscreenMode) {
-        // Direct call might fail, so we also add a one-time click listener
-        requestFullscreen()
+      // Re-enter fullscreen on focus — needs a user gesture,
+      // so we attach a one-time click listener instead of calling directly
+      if (finalConfig.enableFullscreenMode && !document.fullscreenElement) {
         window.addEventListener('click', function reenter() {
           requestFullscreen()
           window.removeEventListener('click', reenter)

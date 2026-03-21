@@ -4,6 +4,14 @@ import { createClient } from '@/utils/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 
+// Service role client for bypassing RLS on payments table (students can't read their own payments via RLS)
+function getAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
+
 export async function getDashboardStats(existingUser?: any) {
   const supabase = await createClient()
   const user = existingUser || (await supabase.auth.getUser()).data.user
@@ -16,7 +24,7 @@ export async function getDashboardStats(existingUser?: any) {
     { count: purchasedCount }
   ] = await Promise.all([
     supabase.from('test_results').select('score, completed_at, test_sets(pass_percentage)').eq('user_id', user.id),
-    supabase.from('payments').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'completed')
+    getAdminClient().from('payments').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'completed')
   ])
 
   if (error) return { error: error.message }
@@ -78,7 +86,7 @@ export async function getRecentActivity(existingUser?: any) {
     { data: payments }
   ] = await Promise.all([
     supabase.from('test_results').select('id, score, completed_at, test_sets(title)').eq('user_id', user.id).order('completed_at', { ascending: false }).limit(3),
-    supabase.from('payments').select('id, amount, created_at, test_sets(title)').eq('user_id', user.id).eq('status', 'completed').order('created_at', { ascending: false }).limit(3)
+    getAdminClient().from('payments').select('id, amount, created_at, test_sets(title)').eq('user_id', user.id).eq('status', 'completed').order('created_at', { ascending: false }).limit(3)
   ])
 
   const activities = [
@@ -109,20 +117,34 @@ export async function getModules() {
 
   if (!user) return []
 
-  const { data: modules, error } = await supabase
-    .from('modules')
-    .select(`
-      id, 
-      name, 
-      description,
-      price,
-      image_url,
-      icon_url,
-      test_sets(id, is_paid)
-    `)
-    .eq('status', 'enabled')
+  // Fetch modules and module-level payments in parallel
+  const [
+    { data: modules, error },
+    { data: modulePurchases }
+  ] = await Promise.all([
+    supabase
+      .from('modules')
+      .select(`
+        id, 
+        name, 
+        description,
+        price,
+        image_url,
+        icon_url,
+        test_sets(id, is_paid)
+      `)
+      .eq('status', 'enabled'),
+    getAdminClient()
+      .from('payments')
+      .select('module_id')
+      .eq('user_id', user.id)
+      .eq('status', 'completed')
+      .not('module_id', 'is', null)
+  ])
 
-  if (error) return []
+  if (error || !modules) return []
+
+  const purchasedModuleIds = new Set(modulePurchases?.map(p => p.module_id) || [])
 
   return modules.map(mod => ({
     id: mod.id,
@@ -133,7 +155,8 @@ export async function getModules() {
     iconUrl: mod.icon_url,
     totalTests: mod.test_sets?.length || 0,
     freeTests: mod.test_sets?.filter((t: any) => !t.is_paid).length || 0,
-    paidTests: mod.test_sets?.filter((t: any) => t.is_paid).length || 0
+    paidTests: mod.test_sets?.filter((t: any) => t.is_paid).length || 0,
+    isUnlocked: purchasedModuleIds.has(mod.id)
   }))
 }
 
@@ -200,7 +223,7 @@ export async function getModuleTests(moduleId: string) {
   ] = await Promise.all([
     supabase.from('modules').select('id, name, description, price, enable_purchase').eq('id', moduleId).single(),
     adminClient.from('test_sets').select('id, title, description, time_limit_minutes, is_paid, price, attempts_allowed, cooldown_hours, target_questions, test_questions(count)').eq('module_id', moduleId).eq('is_hidden', false).order('created_at', { ascending: true }),
-    supabase.from('payments').select('test_set_id, module_id').eq('user_id', user.id).eq('status', 'completed'),
+    adminClient.from('payments').select('test_set_id, module_id').eq('user_id', user.id).eq('status', 'completed'),
     supabase.from('test_attempts').select('test_set_id, status, updated_at, attempt_number').eq('user_id', user.id),
     supabase.from('test_results').select('test_set_id, completed_at, is_violation').eq('user_id', user.id).order('completed_at', { ascending: false }),
     supabase.from('exam_violations').select('exam_id, created_at').eq('user_id', user.id).order('created_at', { ascending: false })
@@ -264,7 +287,12 @@ export async function getModuleTests(moduleId: string) {
       ...moduleInfo, 
       isUnlocked: purchases?.some(p => p.module_id === moduleId) 
     }, 
-    tests: mappedTests 
+    tests: mappedTests.sort((a, b) => {
+      // Free tests (isPaid: false) come first
+      if (!a.isPaid && b.isPaid) return -1
+      if (a.isPaid && !b.isPaid) return 1
+      return 0
+    })
   }
 }
 
@@ -277,7 +305,7 @@ export async function getTestData(testId: string) {
   // Get test details
   const { data: test } = await supabase
     .from('test_sets')
-    .select('id, title, description, time_limit_minutes, randomize_questions, randomize_answers, marks_per_question, negative_marks, module_id, price')
+    .select('id, title, description, time_limit_minutes, randomize_questions, randomize_answers, marks_per_question, negative_marks, module_id, price, test_type')
     .eq('id', testId)
     .single()
 
@@ -339,6 +367,32 @@ export async function getTestData(testId: string) {
     .eq('test_set_id', testId)
     .order('sort_order', { ascending: true })
 
+  // Special Handling for Essay Tests: Randomly select 2 questions from the bank
+  if (test.test_type === 'essay') {
+    const { data: bankQuestions, error: bankError } = await adminClient
+      .from('questions')
+      .select('*')
+      .eq('module_id', test.module_id)
+      .eq('question_type', 'essay')
+      .limit(50) // Adjust bank size limit if needed
+
+    if (!bankError && bankQuestions && bankQuestions.length > 0) {
+      // Pick 2 random questions
+      const shuffled = [...bankQuestions].sort(() => Math.random() - 0.5)
+      const selected = shuffled.slice(0, 2)
+      
+      return {
+        ...test,
+        time_limit_minutes: 40,
+        questions: selected.map(q => ({
+          ...q,
+          question_text: String(q.question_text || '').trim(),
+          options: [] // Essays don't have multiple choice options
+        }))
+      }
+    }
+  }
+
   if (linkError) {
     console.error('Error fetching question links:', linkError)
   }
@@ -351,12 +405,23 @@ export async function getTestData(testId: string) {
         q = q[0]
       }
       
-      if (!q || (!q.id && !q.question_text)) return null
+      // Be strictly permissive: only return null if no question object is found at all
+      if (!q) return null
       
       const questionText = String(q.question_text || '').trim()
       
       // Map options safely
       let rawOptions = q.options || []
+      
+      // Handle case where rawOptions might be a string (JSONB drift)
+      if (typeof rawOptions === 'string') {
+        try {
+          rawOptions = JSON.parse(rawOptions)
+        } catch (e) {
+          rawOptions = []
+        }
+      }
+
       let parsedOptions: any[] = []
       
       if (Array.isArray(rawOptions)) {
@@ -364,7 +429,7 @@ export async function getTestData(testId: string) {
           let text = ''
           let originalIndex = index
           
-          if (opt !== null && typeof opt !== 'object') {
+          if (opt !== null && (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean')) {
             text = String(opt)
           } else if (opt && typeof opt === 'object') {
             text = opt.text || opt.option || opt.value || String(Object.values(opt)[0] || '')
@@ -372,22 +437,22 @@ export async function getTestData(testId: string) {
           }
           
           return { text: String(text || '').trim(), index: originalIndex }
-        }).filter((opt: any) => opt.text !== '')
+        })
       } else if (rawOptions && typeof rawOptions === 'object') {
         // Handle object notation for options if present
         parsedOptions = Object.entries(rawOptions).map(([key, val], index) => ({
           text: String(val || '').trim(),
           index: index
-        })).filter(opt => opt.text !== '')
+        }))
       }
       
       return {
         ...q,
         question_text: questionText || '(No question text provided)',
-        options: parsedOptions
+        options: parsedOptions.filter(opt => opt.text !== '')
       }
     })
-    .filter((q: any) => q !== null) // Relaxed: keep even if options are 0 for now to debug
+    .filter((q: any) => q !== null)
 
   // Randomization Logic
   if (test.randomize_questions || test.randomize_answers) {
@@ -517,6 +582,7 @@ export async function getResultDetails(resultId: string) {
         show_score,
         show_answers,
         show_explanation,
+        attempts_allowed,
         modules(name)
       )
     `)
@@ -526,10 +592,10 @@ export async function getResultDetails(resultId: string) {
   if (error || !data) return null
 
   const test = (data.test_sets as any)
-  const accuracy = data.total_questions > 0 
-    ? Math.round((data.correct_answers / data.total_questions) * 100) 
+  const accuracy = data.total_questions > 0
+    ? Math.round((data.correct_answers / data.total_questions) * 100)
     : 0
-    
+
   const passPercentage = test?.pass_percentage || 75
   const status = Number(data.score) >= passPercentage ? 'Passed' : 'Failed'
 
@@ -541,11 +607,28 @@ export async function getResultDetails(resultId: string) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('exam_id', test.id)
-    
+
     // If there are 5 or more violations, we treat it as a violation fail
     if (count !== null && count >= 5) {
       isViolation = true
     }
+  }
+
+  // 3. Check attempt count vs allowed attempts
+  const attemptsAllowed = test?.attempts_allowed || 0
+  let attemptsUsed = 0
+  let hasReachedLimit = false
+
+  if (attemptsAllowed > 0) {
+    const { count: completedCount } = await supabase
+      .from('test_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('test_set_id', test.id)
+      .eq('status', 'completed')
+
+    attemptsUsed = completedCount || 0
+    hasReachedLimit = attemptsUsed >= attemptsAllowed
   }
 
   return {
@@ -556,7 +639,10 @@ export async function getResultDetails(resultId: string) {
     showScore: test.show_score,
     showAnswers: test.show_answers,
     showExplanation: test.show_explanation,
-    moduleName: test?.modules?.name || 'General'
+    moduleName: test?.modules?.name || 'General',
+    attemptsAllowed,
+    attemptsUsed,
+    hasReachedLimit
   }
 }
 
@@ -603,24 +689,49 @@ export async function getMyTests() {
 
   if (!user) return []
 
-  // Fetch all data in parallel for faster response
+  // 1. Fetch module-level and test-level purchases in parallel via service role
+  const adminClient = getAdminClient()
+  const { data: allPurchases } = await adminClient
+    .from('payments')
+    .select('test_set_id, module_id')
+    .eq('user_id', user.id)
+    .eq('status', 'completed')
+
+  const purchasedTestIds = new Set(allPurchases?.map(p => p.test_set_id).filter(Boolean) || [])
+  const purchasedModuleIds = allPurchases?.map(p => p.module_id).filter(Boolean) || []
+
+  // 2. Fetch all relevant data in parallel
   const [
     { data: freeTests },
-    { data: purchases },
+    { data: individualPurchasedTests },
+    { data: modulePurchasedTests },
     { data: results },
     { data: violations }
   ] = await Promise.all([
-    supabase.from('test_sets').select('id, title, test_type, time_limit_minutes, modules(name)').eq('is_paid', false).eq('is_hidden', false),
-    supabase.from('payments').select('test_set_id, test_sets(id, title, test_type, time_limit_minutes, modules(name))').eq('user_id', user.id).eq('status', 'completed'),
+    // Free tests
+    supabase.from('test_sets').select('id, title, test_type, time_limit_minutes, is_paid, modules(name)').eq('is_paid', false).eq('is_hidden', false),
+    // Individually purchased tests
+    purchasedTestIds.size > 0 
+      ? supabase.from('test_sets').select('id, title, test_type, time_limit_minutes, is_paid, modules(name)').in('id', Array.from(purchasedTestIds))
+      : Promise.resolve({ data: [] }),
+    // Tests from purchased modules
+    purchasedModuleIds.length > 0
+      ? supabase.from('test_sets').select('id, title, test_type, time_limit_minutes, is_paid, modules(name)').in('module_id', purchasedModuleIds)
+      : Promise.resolve({ data: [] }),
+    // User results
     supabase.from('test_results').select('test_set_id, score, completed_at, is_violation').eq('user_id', user.id).order('completed_at', { ascending: false }),
+    // User violations
     supabase.from('exam_violations').select('exam_id, created_at').eq('user_id', user.id).order('created_at', { ascending: false })
   ])
 
-  const purchasedTests = purchases?.map(p => p.test_sets) || []
-  
   // Combine and deduplicate
-  const allTests = [...(freeTests || []), ...(purchasedTests as any[])]
-  const uniqueTests = Array.from(new Map(allTests.map(t => [t.id, t])).values())
+  const allTestsCombined = [
+    ...(freeTests || []),
+    ...(individualPurchasedTests || []),
+    ...(modulePurchasedTests || [])
+  ]
+  
+  const uniqueTests = Array.from(new Map(allTestsCombined.map(t => [t.id, t])).values())
 
   return uniqueTests.map(test => {
     const lastResult = results?.find(r => r.test_set_id === test.id)
@@ -658,8 +769,13 @@ export async function getMyTests() {
       duration: `${test.time_limit_minutes} min`,
       status: lockoutMinutes > 0 ? 'Locked' : (lastResult ? 'Completed' : 'Pending'),
       score: lastResult ? `${Math.round(lastResult.score)}%` : '-',
-      lockoutMinutes: lockoutMinutes
+      lockoutMinutes: lockoutMinutes,
+      isPaid: !!test.is_paid
     }
+  }).sort((a, b) => {
+    if (!a.isPaid && b.isPaid) return -1
+    if (a.isPaid && !b.isPaid) return 1
+    return 0
   })
 }
 
@@ -669,7 +785,7 @@ export async function getPurchases() {
 
   if (!user) return []
 
-  const { data: payments, error } = await supabase
+  const { data: payments, error } = await getAdminClient()
     .from('payments')
     .select(`
       id,
@@ -939,7 +1055,7 @@ export async function getSessionProgress(sessionId: string) {
 
   const { data: answers } = await supabase
     .from('student_answers')
-    .select('question_id, selected_option_index, selected_options, is_flagged')
+    .select('question_id, selected_option_index, selected_options, is_flagged, essay_answer')
     .eq('attempt_id', sessionId)
 
   return { answers: answers || [] }
@@ -948,7 +1064,7 @@ export async function getSessionProgress(sessionId: string) {
 export async function updateTestProgress(
   sessionId: string, 
   questionId: string, 
-  selectedOption: number | number[] | null, 
+  selectedOption: number | number[] | string | null, 
   isFlagged: boolean = false
 ) {
   const supabase = await createClient()
@@ -963,6 +1079,7 @@ export async function updateTestProgress(
       question_id: questionId,
       selected_option_index: typeof selectedOption === 'number' ? selectedOption : null,
       selected_options: Array.isArray(selectedOption) ? selectedOption : null,
+      essay_answer: typeof selectedOption === 'string' ? selectedOption : null,
       is_flagged: isFlagged,
       updated_at: new Date().toISOString()
     }, { onConflict: 'attempt_id,question_id' })
@@ -1050,12 +1167,18 @@ export async function finalizeTest(sessionId: string, isViolation: boolean = fal
 
   let score = 0
   let correctAnswers = 0
-  const totalQuestions = questionLinks?.length || 0
+  // Exclude essay questions from auto-scoring — they are graded manually
+  const totalQuestions = (questionLinks || []).filter(
+    (q: any) => (q.questions?.question_type || 'single') !== 'essay'
+  ).length
 
   questionLinks?.forEach((q: any) => {
     const studentAns = answersMap.get(q.question_id)
     const question = q.questions
     const qType = question?.question_type || 'single'
+
+    // Essay questions are graded manually — skip entirely
+    if (qType === 'essay') return
 
     let isCorrect = false
 
@@ -1095,7 +1218,8 @@ export async function finalizeTest(sessionId: string, isViolation: boolean = fal
       total_questions: totalQuestions,
       correct_answers: correctAnswers,
       time_spent_seconds: Math.floor((new Date().getTime() - new Date(session.start_time).getTime()) / 1000),
-      is_violation: isViolation
+      is_violation: isViolation,
+      status: (session.test_sets as any)?.test_type === 'essay' ? 'under_review' : 'completed'
     })
     .select()
     .single()
@@ -1408,6 +1532,128 @@ export async function markNotificationAsRead(id: string) {
     console.error('Error marking notification as read:', error)
     return { error: error.message }
   }
-  
+
+  return { success: true }
+}
+
+// Called from the checkout page after the student pays via Ziina.
+// Creates a PENDING payment record so the admin can verify and manually unlock.
+export async function notifyAdminOfPayment(testId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  // Get test + student profile details
+  const [{ data: test }, { data: profile }] = await Promise.all([
+    supabase.from('test_sets').select('title, price').eq('id', testId).single(),
+    supabase.from('profiles').select('full_name, email').eq('id', user.id).single()
+  ])
+
+  if (!test) return { error: 'Test not found' }
+
+  // Check if a pending payment already exists to prevent duplicate notifications
+  const { data: existing } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('test_set_id', testId)
+    .eq('status', 'pending')
+    .single()
+
+  if (!existing) {
+    // Insert a pending payment record
+    const { error: payErr } = await supabase
+      .from('payments')
+      .insert({
+        user_id: user.id,
+        test_set_id: testId,
+        amount: test.price || 49,
+        status: 'pending',
+        transaction_id: `ZIINA-PENDING-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+      })
+
+    if (payErr) return { error: payErr.message }
+  }
+
+  // Fetch admin user IDs to notify
+  const { data: admins } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', 'admin')
+
+  if (admins && admins.length > 0) {
+    const studentName = profile?.full_name || profile?.email || 'A student'
+    await supabase.from('notifications').insert(
+      admins.map((admin: any) => ({
+        user_id: admin.id,
+        type: 'payment_pending',
+        title: 'Ziina Payment — Verification Required',
+        message: `${studentName} has completed payment for "${test.title}" via Ziina. Please verify and grant access from their profile page.`
+      }))
+    )
+  }
+
+  return { success: true }
+}
+
+// Called from the MODULE checkout page after the student pays via Ziina.
+// Creates a PENDING payment record at the module level so the admin can verify and unlock the entire module.
+export async function notifyAdminOfModulePayment(moduleId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  // Get module + student profile details
+  const [{ data: moduleInfo }, { data: profile }] = await Promise.all([
+    supabase.from('modules').select('name, price').eq('id', moduleId).single(),
+    supabase.from('profiles').select('full_name, email').eq('id', user.id).single()
+  ])
+
+  if (!moduleInfo) return { error: 'Module not found' }
+
+  // Check if a pending payment already exists to prevent duplicate notifications
+  const { data: existing } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('module_id', moduleId)
+    .eq('status', 'pending')
+    .maybeSingle()
+
+  if (!existing) {
+    // Insert a pending payment record at module level
+    const { error: payErr } = await supabase
+      .from('payments')
+      .insert({
+        user_id: user.id,
+        module_id: moduleId,
+        amount: moduleInfo.price || 49,
+        status: 'pending',
+        transaction_id: `ZIINA-MOD-PENDING-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+      })
+
+    if (payErr) return { error: payErr.message }
+  }
+
+  // Fetch admin user IDs to notify
+  const { data: admins } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', 'admin')
+
+  if (admins && admins.length > 0) {
+    const studentName = profile?.full_name || profile?.email || 'A student'
+    await supabase.from('notifications').insert(
+      admins.map((admin: any) => ({
+        user_id: admin.id,
+        type: 'payment_pending',
+        title: 'Ziina Payment — Verification Required',
+        message: `${studentName} has completed payment for module "${moduleInfo.name}" via Ziina. Please verify and grant access from their profile page.`
+      }))
+    )
+  }
+
   return { success: true }
 }

@@ -32,6 +32,7 @@ export default function ModuleManager() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [moduleToDelete, setModuleToDelete] = useState<any | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [completionModal, setCompletionModal] = useState<{
     isOpen: boolean
     title: string
@@ -74,23 +75,26 @@ export default function ModuleManager() {
   }, [])
 
   const handleToggleStatus = async (module: any) => {
+    setActionError(null)
     const res = await toggleModuleStatus(module.id, module.status || 'enabled')
     if (res.success) {
       fetchData()
     } else {
-      alert(res.error || 'Failed to update module status')
+      setActionError(res.error || 'Failed to update module status.')
     }
   }
 
   const handleDelete = async () => {
     if (!moduleToDelete) return
     setDeleteLoading(true)
+    setActionError(null)
     const result = await deleteModule(moduleToDelete.id)
     if (result.success) {
       setModuleToDelete(null)
       fetchData()
     } else {
-      alert(result.error || 'Failed to delete module')
+      setModuleToDelete(null)
+      setActionError(result.error || 'Failed to delete module.')
     }
     setDeleteLoading(false)
   }
@@ -121,6 +125,13 @@ export default function ModuleManager() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative">
+      {actionError && (
+        <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold border border-red-100 flex items-center justify-between gap-3">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 font-black text-lg leading-none">×</button>
+        </div>
+      )}
+
       {/* Modals */}
       <CompletionListModal
         {...completionModal}
@@ -243,7 +254,7 @@ export default function ModuleManager() {
               </Link>
 
               {/* Action Menu - Outside Link to avoid overflow clipping */}
-              <div className="absolute top-6 right-6 z-20" ref={activeMenu === module.id ? menuRef : null}>
+              <div className="absolute top-6 right-6 z-20" ref={activeMenu === module.id ? menuRef : undefined}>
                   <button 
                       onClick={(e) => {
                           e.preventDefault()

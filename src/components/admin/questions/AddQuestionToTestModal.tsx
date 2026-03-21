@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { X, HelpCircle, CheckCircle2, AlertCircle, Circle, CheckSquare, Square, Plus, Trash2, Star } from 'lucide-react'
+import { X, HelpCircle, CheckCircle2, AlertCircle, Circle, CheckSquare, Square, Plus, Trash2, Star, FileText } from 'lucide-react'
 import { addQuestionToTest, updateQuestion } from '@/app/actions/admin'
 
 interface AddQuestionToTestModalProps {
@@ -20,7 +20,7 @@ export default function AddQuestionToTestModal({
   onSuccess 
 }: AddQuestionToTestModalProps) {
   const [questionText, setQuestionText] = useState(initialData?.question_text || '')
-  const [questionType, setQuestionType] = useState<'single' | 'multiple'>(initialData?.question_type || 'single')
+  const [questionType, setQuestionType] = useState<'single' | 'multiple' | 'essay'>(initialData?.question_type || 'single')
   const [options, setOptions] = useState<string[]>(
     initialData?.options 
       ? initialData.options.map((opt: any) => String(opt || '')) 
@@ -33,6 +33,8 @@ export default function AddQuestionToTestModal({
   const [explanation, setExplanation] = useState(initialData?.explanation || '')
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(initialData?.difficulty_level || 'medium')
   const [marks, setMarks] = useState<number>(initialData?.marks ?? 1)
+  const [minLength, setMinLength] = useState<number | ''>(initialData?.min_length ?? '')
+  const [maxLength, setMaxLength] = useState<number | ''>(initialData?.max_length ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -70,27 +72,31 @@ export default function AddQuestionToTestModal({
     setLoading(true)
     setError(null)
 
-    if (options.some(opt => !String(opt || '').trim())) {
-      setError('Please fill in all options')
-      setLoading(false)
-      return
-    }
+    if (questionType !== 'essay') {
+      if (options.some(opt => !String(opt || '').trim())) {
+        setError('Please fill in all options')
+        setLoading(false)
+        return
+      }
 
-    if (correctOptions.length === 0) {
-      setError('Please select at least one correct option')
-      setLoading(false)
-      return
+      if (correctOptions.length === 0) {
+        setError('Please select at least one correct option')
+        setLoading(false)
+        return
+      }
     }
 
     try {
       const payload = {
         question_text: questionText,
         question_type: questionType,
-        options,
-        correct_options: correctOptions,
+        options: questionType === 'essay' ? [] : options,
+        correct_options: questionType === 'essay' ? [] : correctOptions,
         difficulty_level: difficulty,
         explanation,
-        marks
+        marks,
+        min_length: minLength === '' ? null : Number(minLength),
+        max_length: maxLength === '' ? null : Number(maxLength)
       };
 
       let result;
@@ -141,25 +147,33 @@ export default function AddQuestionToTestModal({
 
         <div className="space-y-4">
           <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Question Type</label>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <button
               type="button"
               onClick={() => {
                 setQuestionType('single')
                 if (correctOptions.length > 1) setCorrectOptions([correctOptions[0]])
               }}
-              className={`p-4 rounded-2xl border flex items-center justify-center gap-3 font-bold transition-all ${questionType === 'single' ? 'bg-primary/5 border-primary text-primary shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white'}`}
+              className={`p-4 rounded-2xl border flex items-center justify-center gap-2 font-bold transition-all ${questionType === 'single' ? 'bg-primary/5 border-primary text-primary shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white'}`}
             >
-              <Circle className="w-5 h-5" />
-              Single Answer
+              <Circle className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm">Single</span>
             </button>
             <button
               type="button"
               onClick={() => setQuestionType('multiple')}
-              className={`p-4 rounded-2xl border flex items-center justify-center gap-3 font-bold transition-all ${questionType === 'multiple' ? 'bg-primary/5 border-primary text-primary shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white'}`}
+              className={`p-4 rounded-2xl border flex items-center justify-center gap-2 font-bold transition-all ${questionType === 'multiple' ? 'bg-primary/5 border-primary text-primary shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white'}`}
             >
-              <CheckSquare className="w-5 h-5" />
-              Multiple Answers
+              <CheckSquare className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm">Multiple</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuestionType('essay')}
+              className={`p-4 rounded-2xl border flex items-center justify-center gap-2 font-bold transition-all ${questionType === 'essay' ? 'bg-primary/5 border-primary text-primary shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white'}`}
+            >
+              <FileText className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm">Essay</span>
             </button>
           </div>
         </div>
@@ -218,65 +232,95 @@ export default function AddQuestionToTestModal({
           </div>
         </div>
 
-        <div className="space-y-4">
-          <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Options (Select the correct one)</label>
-          <div className="grid grid-cols-1 gap-4">
-            {options.map((option, idx) => {
-              const isCorrect = correctOptions.includes(idx)
-              return (
-                <div key={idx} className="flex gap-3">
-                  <div className="relative group flex-1">
-                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${isCorrect ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-white text-slate-400 border border-slate-200'}`}>
-                      {String.fromCharCode(65 + idx)}
-                    </div>
-                    <input
-                      required
-                      type="text"
-                      value={option}
-                      onChange={(e) => handleOptionChange(idx, e.target.value)}
-                      placeholder={`Option ${String.fromCharCode(65 + idx)}`}
-                      className={`w-full pl-16 pr-14 py-4 rounded-2xl border outline-none transition-all font-bold ${isCorrect ? 'bg-green-50/30 border-green-200 ring-4 ring-green-100/20' : 'bg-slate-50 border-slate-200 focus:bg-white focus:border-primary'}`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (questionType === 'single') {
-                          setCorrectOptions([idx])
-                        } else {
-                          if (correctOptions.includes(idx)) {
-                            setCorrectOptions(correctOptions.filter(i => i !== idx))
+        {questionType !== 'essay' && (
+          <div className="space-y-4">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Options (Select the correct one)</label>
+            <div className="grid grid-cols-1 gap-4">
+              {options.map((option, idx) => {
+                const isCorrect = correctOptions.includes(idx)
+                return (
+                  <div key={idx} className="flex gap-3">
+                    <div className="relative group flex-1">
+                      <div className={`absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${isCorrect ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                        {String.fromCharCode(65 + idx)}
+                      </div>
+                      <input
+                        required
+                        type="text"
+                        value={option}
+                        onChange={(e) => handleOptionChange(idx, e.target.value)}
+                        placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                        className={`w-full pl-16 pr-14 py-4 rounded-2xl border outline-none transition-all font-bold ${isCorrect ? 'bg-green-50/30 border-green-200 ring-4 ring-green-100/20' : 'bg-slate-50 border-slate-200 focus:bg-white focus:border-primary'}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (questionType === 'single') {
+                            setCorrectOptions([idx])
                           } else {
-                            setCorrectOptions([...correctOptions, idx])
+                            if (correctOptions.includes(idx)) {
+                              setCorrectOptions(correctOptions.filter(i => i !== idx))
+                            } else {
+                              setCorrectOptions([...correctOptions, idx])
+                            }
                           }
-                        }
-                      }}
-                      className={`absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${isCorrect ? 'text-green-500 bg-green-100' : 'text-slate-300 hover:text-slate-400 hover:bg-slate-100'}`}
-                    >
-                      {isCorrect ? <CheckCircle2 className="w-5 h-5" /> : (questionType === 'single' ? <Circle className="w-5 h-5" /> : <Square className="w-5 h-5" />)}
-                    </button>
+                        }}
+                        className={`absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${isCorrect ? 'text-green-500 bg-green-100' : 'text-slate-300 hover:text-slate-400 hover:bg-slate-100'}`}
+                      >
+                        {isCorrect ? <CheckCircle2 className="w-5 h-5" /> : (questionType === 'single' ? <Circle className="w-5 h-5" /> : <Square className="w-5 h-5" />)}
+                      </button>
+                    </div>
+                    {options.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => removeOption(idx)}
+                        className="p-3 self-center hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shrink-0"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
-                  {options.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeOption(idx)}
-                      className="p-3 self-center hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shrink-0"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-            <button
-              type="button"
-              onClick={addOption}
-              className="mt-2 w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black hover:border-primary/30 hover:bg-slate-50 hover:text-primary transition-all flex items-center justify-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              Add Another Option
-            </button>
+                )
+              })}
+              <button
+                type="button"
+                onClick={addOption}
+                className="mt-2 w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black hover:border-primary/30 hover:bg-slate-50 hover:text-primary transition-all flex items-center justify-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                Add Another Option
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {questionType === 'essay' && (
+          <div className="space-y-4">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Essay Content Limits</label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Min Words</label>
+                <input
+                  type="number"
+                  value={minLength}
+                  onChange={(e) => setMinLength(e.target.value === '' ? '' : parseInt(e.target.value))}
+                  placeholder="Min"
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Max Words</label>
+                <input
+                  type="number"
+                  value={maxLength}
+                  onChange={(e) => setMaxLength(e.target.value === '' ? '' : parseInt(e.target.value))}
+                  placeholder="Max"
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Explanation (Optional)</label>
