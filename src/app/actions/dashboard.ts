@@ -1538,53 +1538,64 @@ export async function markNotificationAsRead(id: string) {
 
 // Called from the checkout page after the student pays via Ziina.
 // Creates a PENDING payment record so the admin can verify and manually unlock.
+// Uses service role client to bypass RLS (student inserting notifications for admin users).
 export async function notifyAdminOfPayment(testId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return { error: 'Not authenticated' }
 
+  // Service role client bypasses RLS — needed for cross-user inserts (notifications to admins)
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   // Get test + student profile details
   const [{ data: test }, { data: profile }] = await Promise.all([
-    supabase.from('test_sets').select('title, price').eq('id', testId).single(),
-    supabase.from('profiles').select('full_name, email').eq('id', user.id).single()
+    serviceClient.from('test_sets').select('title, price').eq('id', testId).single(),
+    serviceClient.from('profiles').select('full_name, email').eq('id', user.id).single()
   ])
 
   if (!test) return { error: 'Test not found' }
 
   // Check if a pending payment already exists to prevent duplicate notifications
-  const { data: existing } = await supabase
+  const { data: existing } = await serviceClient
     .from('payments')
     .select('id')
     .eq('user_id', user.id)
     .eq('test_set_id', testId)
     .eq('status', 'pending')
-    .single()
+    .maybeSingle()
+
+  const txnId = `ZIINA-PENDING-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
 
   if (!existing) {
     // Insert a pending payment record
-    const { error: payErr } = await supabase
+    const { error: payErr } = await serviceClient
       .from('payments')
       .insert({
         user_id: user.id,
         test_set_id: testId,
         amount: test.price || 49,
         status: 'pending',
-        transaction_id: `ZIINA-PENDING-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+        transaction_id: txnId
       })
 
     if (payErr) return { error: payErr.message }
   }
 
-  // Fetch admin user IDs to notify
-  const { data: admins } = await supabase
+  const studentName = profile?.full_name || profile?.email || 'A student'
+  const studentEmail = profile?.email || user.email || ''
+
+  // Fetch admin user IDs to notify (in-app)
+  const { data: admins } = await serviceClient
     .from('profiles')
     .select('id')
     .eq('role', 'admin')
 
   if (admins && admins.length > 0) {
-    const studentName = profile?.full_name || profile?.email || 'A student'
-    await supabase.from('notifications').insert(
+    const { error: notifErr } = await serviceClient.from('notifications').insert(
       admins.map((admin: any) => ({
         user_id: admin.id,
         type: 'payment_pending',
@@ -1592,6 +1603,30 @@ export async function notifyAdminOfPayment(testId: string) {
         message: `${studentName} has completed payment for "${test.title}" via Ziina. Please verify and grant access from their profile page.`
       }))
     )
+    if (notifErr) return { error: notifErr.message }
+  }
+
+  // Send admin email via Edge Function (fire-and-forget — don't block the student)
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    await fetch(`${supabaseUrl}/functions/v1/notify-admin-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({
+        studentName,
+        studentEmail,
+        moduleName: test.title,
+        amount: test.price || 49,
+        transactionId: txnId,
+      }),
+    })
+  } catch (emailErr) {
+    // Don't fail the whole action if the email doesn't send
+    console.error('Failed to send admin payment email:', emailErr)
   }
 
   return { success: true }
@@ -1599,22 +1634,29 @@ export async function notifyAdminOfPayment(testId: string) {
 
 // Called from the MODULE checkout page after the student pays via Ziina.
 // Creates a PENDING payment record at the module level so the admin can verify and unlock the entire module.
+// Uses service role client to bypass RLS (student inserting notifications for admin users).
 export async function notifyAdminOfModulePayment(moduleId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return { error: 'Not authenticated' }
 
+  // Service role client bypasses RLS — needed for cross-user inserts (notifications to admins)
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   // Get module + student profile details
   const [{ data: moduleInfo }, { data: profile }] = await Promise.all([
-    supabase.from('modules').select('name, price').eq('id', moduleId).single(),
-    supabase.from('profiles').select('full_name, email').eq('id', user.id).single()
+    serviceClient.from('modules').select('name, price').eq('id', moduleId).single(),
+    serviceClient.from('profiles').select('full_name, email').eq('id', user.id).single()
   ])
 
   if (!moduleInfo) return { error: 'Module not found' }
 
   // Check if a pending payment already exists to prevent duplicate notifications
-  const { data: existing } = await supabase
+  const { data: existing } = await serviceClient
     .from('payments')
     .select('id')
     .eq('user_id', user.id)
@@ -1622,30 +1664,34 @@ export async function notifyAdminOfModulePayment(moduleId: string) {
     .eq('status', 'pending')
     .maybeSingle()
 
+  const txnId = `ZIINA-MOD-PENDING-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+
   if (!existing) {
     // Insert a pending payment record at module level
-    const { error: payErr } = await supabase
+    const { error: payErr } = await serviceClient
       .from('payments')
       .insert({
         user_id: user.id,
         module_id: moduleId,
         amount: moduleInfo.price || 49,
         status: 'pending',
-        transaction_id: `ZIINA-MOD-PENDING-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+        transaction_id: txnId
       })
 
     if (payErr) return { error: payErr.message }
   }
 
-  // Fetch admin user IDs to notify
-  const { data: admins } = await supabase
+  const studentName = profile?.full_name || profile?.email || 'A student'
+  const studentEmail = profile?.email || user.email || ''
+
+  // Fetch admin user IDs to notify (in-app)
+  const { data: admins } = await serviceClient
     .from('profiles')
     .select('id')
     .eq('role', 'admin')
 
   if (admins && admins.length > 0) {
-    const studentName = profile?.full_name || profile?.email || 'A student'
-    await supabase.from('notifications').insert(
+    const { error: notifErr } = await serviceClient.from('notifications').insert(
       admins.map((admin: any) => ({
         user_id: admin.id,
         type: 'payment_pending',
@@ -1653,7 +1699,139 @@ export async function notifyAdminOfModulePayment(moduleId: string) {
         message: `${studentName} has completed payment for module "${moduleInfo.name}" via Ziina. Please verify and grant access from their profile page.`
       }))
     )
+    if (notifErr) return { error: notifErr.message }
+  }
+
+  // Send admin email via Edge Function (fire-and-forget — don't block the student)
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    await fetch(`${supabaseUrl}/functions/v1/notify-admin-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({
+        studentName,
+        studentEmail,
+        moduleName: moduleInfo.name,
+        amount: moduleInfo.price || 49,
+        transactionId: txnId,
+      }),
+    })
+  } catch (emailErr) {
+    // Don't fail the whole action if the email doesn't send
+    console.error('Failed to send admin payment email:', emailErr)
   }
 
   return { success: true }
+}
+
+export async function getUserPurchases() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('payments')
+    .select(`
+      id,
+      amount,
+      status,
+      transaction_id,
+      created_at,
+      module_id,
+      test_sets (title),
+      modules (name)
+    `)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching user purchases:', error)
+    return []
+  }
+
+  return data
+}
+
+// ─── Ziina Automated Payment ─────────────────────────────────────────────────
+
+export async function createZiinaCheckout(moduleId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  const serviceClient = getAdminClient()
+
+  // Fetch module info
+  const { data: moduleInfo } = await serviceClient
+    .from('modules')
+    .select('name, price')
+    .eq('id', moduleId)
+    .single()
+
+  if (!moduleInfo) return { error: 'Module not found' }
+
+  // Check if already purchased
+  const { data: existing } = await serviceClient
+    .from('payments')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('module_id', moduleId)
+    .eq('status', 'completed')
+    .maybeSingle()
+
+  if (existing) return { error: 'already_purchased' }
+
+  const price = moduleInfo.price || 49
+
+  try {
+    const { createPaymentIntent } = await import('@/utils/ziina')
+    const intent = await createPaymentIntent({
+      amount: price,
+      moduleId,
+      userId: user.id,
+      moduleName: moduleInfo.name,
+    })
+
+    // Insert pending payment with Ziina payment intent ID as transaction_id
+    const { error: payErr } = await serviceClient.from('payments').insert({
+      user_id: user.id,
+      module_id: moduleId,
+      amount: price,
+      status: 'pending',
+      transaction_id: intent.id,
+    })
+
+    if (payErr) return { error: payErr.message }
+
+    return { redirect_url: intent.redirectUrl }
+  } catch (err: any) {
+    console.error('Ziina payment intent creation failed:', err)
+    return { error: err.message || 'Failed to create payment session' }
+  }
+}
+
+export async function checkPaymentStatus(transactionId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { status: 'error' }
+
+  const serviceClient = getAdminClient()
+
+  const { data } = await serviceClient
+    .from('payments')
+    .select('status, module_id')
+    .eq('transaction_id', transactionId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!data) return { status: 'not_found' }
+
+  return { status: data.status, moduleId: data.module_id }
 }

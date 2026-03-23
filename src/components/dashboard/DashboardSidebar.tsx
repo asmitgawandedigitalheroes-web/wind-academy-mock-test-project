@@ -24,6 +24,7 @@ const navItems = [
   { name: 'My Tests', icon: ClipboardList, href: '/dashboard/my-tests' },
   // { name: 'Progress', icon: BarChart3, href: '/dashboard/progress' },
   { name: 'Results', icon: Award, href: '/dashboard/results' },
+  { name: 'Purchases', icon: Wallet, href: '/dashboard/purchases' },
   { name: 'Profile', icon: UserCircle, href: '/dashboard/profile' },
 ]
 

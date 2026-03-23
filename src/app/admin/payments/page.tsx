@@ -38,7 +38,8 @@ export default function PaymentsPage() {
         transaction_id,
         created_at,
         profiles (full_name, email),
-        test_sets (title)
+        test_sets (title),
+        modules (name)
       `)
       .order('created_at', { ascending: false })
 
@@ -51,6 +52,7 @@ export default function PaymentsPage() {
   const filteredPayments = payments.filter(pay => 
     pay.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     pay.test_sets?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    pay.modules?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     pay.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -151,7 +153,7 @@ export default function PaymentsPage() {
               <tr className="bg-slate-50/50">
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Transaction ID</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Student</th>
-                <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Test Unlocked</th>
+                <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Item Unlocked</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Amount</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Date</th>
                 <th className="px-8 py-6 text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Status</th>
@@ -194,8 +196,10 @@ export default function PaymentsPage() {
                       </div>
                     </td>
                     <td className="px-8 py-6">
-                        <p className="text-sm font-bold text-[#0f172a]">{p.test_sets?.title}</p>
-                        <p className="text-[10px] text-primary font-black uppercase tracking-widest mt-0.5">Mock Test</p>
+                        <p className="text-sm font-bold text-[#0f172a]">{p.test_sets?.title || p.modules?.name}</p>
+                        <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${p.test_sets?.title ? 'text-primary' : 'text-accent'}`}>
+                          {p.test_sets?.title ? 'Mock Test' : 'Full Module'}
+                        </p>
                     </td>
                     <td className="px-8 py-6">
                       <p className="text-sm font-black text-[#0f172a]">₹{p.amount}</p>
@@ -261,7 +265,10 @@ export default function PaymentsPage() {
                         </div>
                         <div className="pt-2 border-t border-slate-100">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Source</p>
-                            <p className="text-xs font-bold text-primary">{p.test_sets?.title}</p>
+                            <p className="text-xs font-bold text-primary">{p.test_sets?.title || p.modules?.name}</p>
+                            <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter mt-0.5">
+                              {p.test_sets?.title ? 'Mock Test' : 'Full Module'}
+                            </p>
                         </div>
                     </div>
 
