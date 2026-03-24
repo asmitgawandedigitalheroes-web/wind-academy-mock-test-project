@@ -1,6 +1,6 @@
 import React from 'react'
 import { getResultDetails } from '@/app/actions/dashboard'
-import { CheckCircle2, XCircle, ArrowRight, Share2, ClipboardList, TrendingUp, Clock, Target, BarChart3 } from 'lucide-react'
+import { CheckCircle2, XCircle, ArrowRight, ClipboardList, Clock, BarChart3, Mail, BookOpen } from 'lucide-react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import BackButton from '@/components/common/BackButton'
@@ -19,11 +19,53 @@ export default async function ResultSummaryPage({ params }: PageProps) {
   const result = resultData as any
 
   const isPassed = result.status === 'Passed'
+  const isEssayPending = result.isEssayPending
+
+  // Essay under-review: show a dedicated pending page
+  if (isEssayPending) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+        <BackButton variant="ghost" className="-ml-3" />
+        <div className="p-10 md:p-14 rounded-[3rem] border border-primary/10 bg-primary/5 shadow-2xl shadow-primary/5 flex flex-col items-center text-center">
+          <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-8 bg-white text-primary shadow-xl">
+            <BookOpen className="w-12 h-12" />
+          </div>
+          <h1 className="text-4xl font-black text-[#0f172a] mb-2">Essay Submitted!</h1>
+          <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Your answers have been received and are under review.</p>
+          <div className="mt-10 flex flex-col items-center gap-3 bg-white rounded-2xl border border-slate-100 px-10 py-8 shadow-lg max-w-md w-full">
+            <Mail className="w-8 h-8 text-primary mb-1" />
+            <p className="text-[0.7rem] font-black text-slate-400 uppercase tracking-widest">Results Timeline</p>
+            <p className="text-2xl font-black text-primary">Within 24 Hours</p>
+            <p className="text-sm text-slate-500 text-center mt-1 leading-relaxed">
+              Our instructors are reviewing your essay. Your results and feedback will be sent to your registered email address.
+            </p>
+          </div>
+        </div>
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-primary/5 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-primary/5 rounded-2xl flex items-center justify-center text-primary">
+              <BarChart3 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="font-black text-[#0f172a]">{result.test_sets.title}</h3>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{result.moduleName}</p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/results"
+            className="px-8 py-4 bg-slate-50 text-[#0f172a] rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100 text-center"
+          >
+            Back to Results
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <BackButton variant="ghost" className="-ml-3" />
-      
+
       {/* Result Card Header */}
       <div className={`p-10 md:p-14 rounded-[3rem] border shadow-2xl flex flex-col items-center text-center ${
           isPassed ? 'bg-accent/5 border-accent/10 shadow-accent/5' : 'bg-primary/5 border-primary/10 shadow-primary/5'
@@ -37,15 +79,15 @@ export default async function ResultSummaryPage({ params }: PageProps) {
             {result.isViolation ? 'Test Terminated!' : (result.showScore ? `Test ${result.status}!` : 'Test Completed!')}
           </h1>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">
-              {result.isViolation 
+              {result.isViolation
                 ? 'Your test was terminated due to multiple security violations.'
-                : (result.showScore 
+                : (result.showScore
                   ? (isPassed ? 'Excellent work! You have cleared the benchmark.' : 'Don\'t give up! Practice more to improve your score.')
                   : 'Your submission has been received. Thank you for taking the test.'
                 )
               }
           </p>
-          
+
           {result.showScore && (
             <div className="mt-12 flex flex-col md:flex-row items-center gap-12">
                 <div className="text-center">

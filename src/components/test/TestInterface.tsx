@@ -56,6 +56,7 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
   const [isViolationTerminated, setIsViolationTerminated] = useState(false)
   const [questionTimeLeft, setQuestionTimeLeft] = useState(20 * 60) // 20 minutes default for Essay
   const [essayContent, setEssayContent] = useState<Record<string, string>>({})
+  const essaySaveTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   // Anti-cheat system
   const {
@@ -89,93 +90,78 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
     }
   })
 
-  // Ensure originalQuestions is a clean, dense array of non-null objects
   const originalQuestions = React.useMemo(() => {
-    return (test.questions || []).filter(q => q && typeof q === 'object' && q.id)
+    const rawQuestions = test.questions || [];
+    return rawQuestions.filter(q => q && typeof q === 'object' && q.id);
   }, [test.questions])
 
-  // Derived state for questions (shuffled with stable seed)
-  const { shuffledQuestions, shuffledOptions } = React.useMemo(() => {
-    if (originalQuestions.length === 0) {
-      return { shuffledQuestions: [], shuffledOptions: {} }
-    }
-
-    // Use sessionId for seed if available to keep order consistent on refresh
-    const seedString = `${sessionId || 'new'}-${user?.id || 'guest'}-${test.id}`
-    let seed = 0
-    for (let i = 0; i < seedString.length; i++) {
-      seed = (seed << 5) - seed + seedString.charCodeAt(i)
-      seed |= 0
-    }
-
-    const seededRandom = () => {
-      seed = (seed * 9301 + 49297) % 233280
-      return seed / 233280
-    }
-
-    // Shuffle Questions
-    const indices = originalQuestions.map((_, i) => i)
-    for (let i = indices.length - 1; i > 0; i--) {
-      const j = Math.floor(seededRandom() * (i + 1))
-        ;[indices[i], indices[j]] = [indices[j], indices[i]]
-    }
-    const shuffled = indices.map((i: number) => originalQuestions[i]).filter(Boolean)
-
-    // Shuffle Options
-    const shuffledOpts: Record<string, any[]> = {}
-    shuffled.forEach((q: any) => {
-      if (q && q.options && Array.isArray(q.options)) {
-        const optIndices = q.options.map((_: any, i: number) => i)
-        // Only shuffle if there are options
-        if (optIndices.length > 0) {
-          for (let i = optIndices.length - 1; i > 0; i--) {
-            const j = Math.floor(seededRandom() * (i + 1))
-              ;[optIndices[i], optIndices[j]] = [optIndices[j], optIndices[i]]
-          }
-
-          shuffledOpts[q.id] = optIndices.map((i: number, pos: number) => {
-            const opt = q.options![i]
-            let text = ''
-            let originalIndex = typeof i === 'number' && !isNaN(i) ? i : pos
-
-            if (opt !== null && (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean')) {
-              text = String(opt)
-            }
-            else if (opt && typeof opt === 'object') {
-              text = opt.text || opt.option || opt.value || String(Object.values(opt)[0] || '')
-              const extractedIndex = ('index' in opt || 'originalIndex' in opt) ? (opt.index ?? opt.originalIndex) : i
-              originalIndex = typeof extractedIndex === 'number' && !isNaN(extractedIndex) ? extractedIndex : pos
-            }
-
-            return {
-              text: String(text || '').trim() || `Option ${pos + 1}`,
-              originalIndex: originalIndex
-            }
-          })
+    // Derived state for questions (shuffled with stable seed)
+    const { shuffledQuestions, shuffledOptions } = React.useMemo(() => {
+        if (originalQuestions.length === 0) {
+            return { shuffledQuestions: [], shuffledOptions: {} }
         }
-      }
 
-      // Fallback if shuffledOpts[q.id] is still missing or empty
-      if (!shuffledOpts[q.id] || shuffledOpts[q.id].length === 0) {
-        shuffledOpts[q.id] = (q.options || []).map((opt: any, i: number) => {
-          let text = ''
-          if (opt !== null && (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean')) {
-            text = String(opt)
-          } else if (opt && typeof opt === 'object') {
-            text = opt.text || opt.option || opt.value || `Option ${i + 1}`
-          } else {
-            text = `Option ${i + 1}`
-          }
-          return {
-            text: text,
-            originalIndex: (opt?.index ?? opt?.originalIndex ?? i)
-          }
+        // 1. Create a stable seed
+        const seedString = `${sessionId || 'new'}-${user?.id || 'guest'}-${test.id}`
+        let seedValue = 0
+        for (let i = 0; i < seedString.length; i++) {
+            seedValue = (seedValue << 5) - seedValue + seedString.charCodeAt(i)
+            seedValue |= 0 // Force to 32bit integer
+        }
+
+        // 2. Define random generator
+        const nextRandom = () => {
+            seedValue = (seedValue * 9301 + 49297) % 233280
+            return Math.abs(seedValue) / 233280
+        }
+
+        // 3. Shuffle Questions via Fisher-Yates with indices
+        const questionIndices = originalQuestions.map((_, i) => i)
+        for (let i = questionIndices.length - 1; i > 0; i--) {
+            const j = Math.floor(nextRandom() * (i + 1));
+            // Explicit swap to avoid destructuring bugs in some environments
+            const temp = questionIndices[i];
+            questionIndices[i] = questionIndices[j];
+            questionIndices[j] = temp;
+        }
+        
+        const finalShuffledQuestions = questionIndices.map(idx => originalQuestions[idx]).filter(Boolean)
+
+        // 4. Shuffle Options per question
+        const finalShuffledOptions: Record<string, any[]> = {}
+        finalShuffledQuestions.forEach((q: any) => {
+            if (q && q.options && Array.isArray(q.options) && q.options.length > 0) {
+                const optIndices = q.options.map((_: any, i: number) => i)
+                for (let i = optIndices.length - 1; i > 0; i--) {
+                    const j = Math.floor(nextRandom() * (i + 1));
+                    const temp = optIndices[i];
+                    optIndices[i] = optIndices[j];
+                    optIndices[j] = temp;
+                }
+
+                finalShuffledOptions[q.id] = optIndices.map((i: number, pos: number) => {
+                    const opt = q.options![i]
+                    // Standardize: Trust server-mapped 'text' property
+                    if (opt && typeof opt === 'object' && 'text' in opt) {
+                        const o = opt as any
+                        return {
+                            text: o.text || `Option ${pos + 1}`,
+                            originalIndex: o.index ?? o.originalIndex ?? i
+                        }
+                    }
+                    // Final fallback
+                    return {
+                        text: String(opt || `Option ${pos + 1}`),
+                        originalIndex: i
+                    }
+                })
+            } else {
+                finalShuffledOptions[q.id || 'err'] = []
+            }
         })
-      }
-    })
 
-    return { shuffledQuestions: shuffled, shuffledOptions: shuffledOpts }
-  }, [originalQuestions, test.id, user?.id, sessionId])
+        return { shuffledQuestions: finalShuffledQuestions, shuffledOptions: finalShuffledOptions }
+    }, [originalQuestions, test.id, user?.id, sessionId])
 
   const currentQuestion = shuffledQuestions.length > 0
     ? shuffledQuestions[currentQuestionIdx]
@@ -196,6 +182,9 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
 
     hasSubmittedRef.current = true
     setIsSubmitting(true)
+
+    // Ensure any final essay content is saved before finalizing
+    await flushEssaySave()
 
     if (isAutoSubmit) {
       setShowConfirmSubmit(false)
@@ -319,11 +308,25 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
   const saveProgress = useCallback(async (qId: string, selection: number | number[] | string | null, flagged: boolean) => {
     if (!sessionId) return
     try {
-      await updateTestProgress(sessionId, qId, selection, flagged)
+      return await updateTestProgress(sessionId, qId, selection, flagged)
     } catch (err) {
       console.error('Failed to save progress:', err)
+      return { error: err }
     }
   }, [sessionId])
+
+  const flushEssaySave = useCallback(async () => {
+    const qId = currentQuestion?.id
+    if (qId && essaySaveTimerRef.current[qId]) {
+      clearTimeout(essaySaveTimerRef.current[qId])
+      delete essaySaveTimerRef.current[qId]
+      const content = essayContent[qId]
+      if (content !== undefined) {
+        return await saveProgress(qId, content, flaggedQuestions.has(qId))
+      }
+    }
+    return { success: true }
+  }, [currentQuestion?.id, essayContent, flaggedQuestions, saveProgress])
 
   const handleOptionSelect = (optionIdx: number) => {
     const isMultiple = currentQuestion.question_type === 'multiple'
@@ -355,11 +358,13 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
     if (words > maxLength) return // Enforce limit
 
     setEssayContent(prev => ({ ...prev, [currentQuestion.id]: content }))
-    
-    // Save progress periodically
-    setTimeout(() => {
-      saveProgress(currentQuestion.id, content, flaggedQuestions.has(currentQuestion.id))
-    }, 0)
+
+    // Debounce save — only fire after user stops typing for 1.5 s
+    const qId = currentQuestion.id
+    if (essaySaveTimerRef.current[qId]) clearTimeout(essaySaveTimerRef.current[qId])
+    essaySaveTimerRef.current[qId] = setTimeout(() => {
+      saveProgress(qId, content, flaggedQuestions.has(qId))
+    }, 1500)
   }
 
   const toggleFlag = () => {
@@ -666,7 +671,10 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
              </div>
           )}
           <button
-            onClick={() => setShowConfirmSubmit(true)}
+            onClick={async () => {
+              await flushEssaySave()
+              setShowConfirmSubmit(true)
+            }}
             className="bg-primary text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all"
           >
             Submit Test
@@ -782,8 +790,11 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
 
               <div className="flex items-center justify-between mt-12 pt-8 border-t border-slate-50">
                 <button
-                  disabled={currentQuestionIdx === 0 || test.test_type === 'essay'}
-                  onClick={() => setCurrentQuestionIdx(prev => prev - 1)}
+                  disabled={currentQuestionIdx === 0}
+                  onClick={async () => {
+                    await flushEssaySave()
+                    setCurrentQuestionIdx(prev => prev - 1)
+                  }}
                   className="p-4 bg-slate-50 text-slate-400 rounded-2xl hover:bg-slate-100 hover:text-primary transition-all disabled:opacity-30"
                 >
                   <ChevronLeft className="w-6 h-6" />
@@ -808,8 +819,10 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                     <RotateCcw className="w-4 h-4" /> Clear Selection
                   </button>
                   <button
-                    disabled={test.test_type === 'essay' && questionTimeLeft > 0}
-                    onClick={() => {
+                    onClick={async () => {
+                      // Flush any pending debounced essay save immediately
+                      await flushEssaySave()
+                      
                       if (currentQuestionIdx < shuffledQuestions.length - 1) {
                         setCurrentQuestionIdx(prev => prev + 1)
                       } else {
@@ -836,7 +849,8 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
               {shuffledQuestions.map((q, idx) => {
                 if (!q) return null
                 const isCurrent = currentQuestionIdx === idx
-                const isAnswered = answers[q.id] !== undefined
+                const isAnswered = answers[q.id] !== undefined ||
+                  (essayContent[q.id] !== undefined && essayContent[q.id].trim().length > 0)
                 const isFlagged = flaggedQuestions.has(q.id)
                 const isVisited = visitedQuestions.has(q.id)
 
@@ -849,12 +863,11 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                 return (
                   <button
                     key={idx}
-                    onClick={() => {
-                      if (test.test_type === 'essay') return
+                    onClick={async () => {
+                      await flushEssaySave()
                       setCurrentQuestionIdx(idx)
                     }}
-                    disabled={test.test_type === 'essay'}
-                    className={`aspect-square rounded-xl flex items-center justify-center font-black text-xs transition-all border ${statusClass} ${test.test_type === 'essay' ? 'cursor-not-allowed opacity-80' : ''}`}
+                    className={`aspect-square rounded-xl flex items-center justify-center font-black text-xs transition-all border ${statusClass}`}
                   >
                     {idx + 1}
                   </button>
@@ -868,7 +881,9 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
                   <div className="w-3 h-3 rounded-full bg-green-500"></div>
                   <span className="text-[0.65rem] font-bold text-slate-400 uppercase tracking-widest">Answered</span>
                 </div>
-                <span className="text-xs font-black text-slate-600">{Object.keys(answers).length}</span>
+                <span className="text-xs font-black text-slate-600">
+                  {Object.keys(answers).length + Object.keys(essayContent).filter(k => essayContent[k]?.trim().length > 0).length}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -944,7 +959,9 @@ export default function TestInterface({ test, user }: TestInterfaceProps) {
           <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl">
             <h3 className="text-2xl font-black text-[#0f172a] text-center mb-4">Submit Exam?</h3>
             <p className="text-slate-500 text-center font-medium mb-8">
-              Answered: <span className="text-primary font-black">{Object.keys(answers).length}</span> / {shuffledQuestions.length}
+              Answered: <span className="text-primary font-black">
+                {Object.keys(answers).length + Object.keys(essayContent).filter(k => essayContent[k]?.trim().length > 0).length}
+              </span> / {shuffledQuestions.length}
             </p>
             <div className="grid grid-cols-2 gap-4">
               <button onClick={() => setShowConfirmSubmit(false)} className="py-4 bg-slate-50 rounded-2xl font-black uppercase tracking-widest text-xs">Cancel</button>

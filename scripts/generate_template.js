@@ -56,8 +56,8 @@ async function generateTemplate() {
     explanation: "2 and 5 are prime numbers, while 4 and 9 are composite."
   });
 
-  // Apply dropdowns to 100 rows
-  for (let i = 2; i <= 101; i++) {
+  // Apply dropdowns to 300 rows (supports uploads up to 300 questions)
+  for (let i = 2; i <= 301; i++) {
     // Question Type Dropdown
     sheet.getCell(`B${i}`).dataValidation = {
       type: 'list',

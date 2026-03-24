@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
-import { gradeEssayResult } from '@/app/actions/admin'
+import { gradeEssayResult, getEssayAnswers } from '@/app/actions/admin'
 
 export default function ResultDetailPage() {
   const params = useParams()
@@ -78,35 +78,26 @@ export default function ResultDetailPage() {
   }
 
   const fetchEssayAnswers = async (resultData: any) => {
-    // Find the test attempt linked to this result
-    const { data: attempt } = await supabase
-      .from('test_attempts')
-      .select('id')
-      .eq('test_set_id', resultData.test_set_id)
-      .eq('user_id', resultData.user_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+    try {
+      console.log('Fetching essay answers for result:', id, 'Test Set:', resultData.test_set_id);
+      
+      const response = await getEssayAnswers(resultData.test_set_id, resultData.user_id)
+      
+      if (response.error) {
+        console.error('Error fetching essay answers:', response.error);
+        return
+      }
 
-    if (!attempt) return
-
-    // Fetch essay answers joined with question text
-    const { data: answers } = await supabase
-      .from('student_answers')
-      .select(`
-        essay_answer,
-        questions (
-          id,
-          question_text,
-          min_length,
-          max_length
-        )
-      `)
-      .eq('attempt_id', attempt.id)
-      .not('essay_answer', 'is', null)
-
-    if (answers && answers.length > 0) {
-      setEssayAnswers(answers)
+      if (response.answers && response.answers.length > 0) {
+        // Filter those that have some essay content
+        const essayOnes = response.answers.filter((a: any) => 
+          a.questions?.question_type === 'essay' || a.essay_answer !== null
+        );
+        console.log(`Found ${essayOnes.length} essay answers.`);
+        setEssayAnswers(essayOnes)
+      }
+    } catch (err) {
+      console.error('Unexpected error in fetchEssayAnswers:', err);
     }
   }
 
