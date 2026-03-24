@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.ziina.com)",
+      "Bash(node scripts/fix-qa-errors.mjs --dry-run)",
+      "Bash(node scripts/fix-qa-errors.mjs)"
+    ]
+  }
+}

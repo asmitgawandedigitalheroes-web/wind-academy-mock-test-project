@@ -69,11 +69,6 @@ export default function RecentActivity({ activities }: RecentActivityProps) {
         ))}
       </div>
 
-      <div className="mt-8 pt-8 border-t border-slate-50">
-        <button className="w-full py-4 bg-slate-50 hover:bg-slate-100 rounded-2xl text-xs font-black text-[#0f172a] uppercase tracking-widest transition-all">
-          View All History
-        </button>
-      </div>
     </div>
   )
 }

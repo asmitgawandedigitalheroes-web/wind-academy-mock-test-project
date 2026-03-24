@@ -3,6 +3,17 @@
 import { createClient } from '@/utils/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import nodemailer from 'nodemailer'
+
+function createMailTransporter() {
+  const port = parseInt(process.env.SMTP_PORT || '465')
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure: port === 465,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  })
+}
 
 // Service role client for bypassing RLS on payments table (students can't read their own payments via RLS)
 function getAdminClient() {
@@ -86,7 +97,7 @@ export async function getRecentActivity(existingUser?: any) {
     { data: payments }
   ] = await Promise.all([
     supabase.from('test_results').select('id, score, completed_at, test_sets(title)').eq('user_id', user.id).order('completed_at', { ascending: false }).limit(3),
-    getAdminClient().from('payments').select('id, amount, created_at, test_sets(title)').eq('user_id', user.id).eq('status', 'completed').order('created_at', { ascending: false }).limit(3)
+    getAdminClient().from('payments').select('id, amount, created_at, test_sets(title), modules(name)').eq('user_id', user.id).eq('status', 'completed').order('created_at', { ascending: false }).limit(3)
   ])
 
   const activities = [
@@ -101,7 +112,7 @@ export async function getRecentActivity(existingUser?: any) {
     ...(payments?.map(p => ({
       id: p.id,
       type: 'test_unlocked',
-      title: (p.test_sets as any)?.title,
+      title: (p.test_sets as any)?.title || (p.modules as any)?.name || 'Unlock Completed',
       score: 'Unlocked',
       date: new Date(p.created_at).toLocaleDateString(),
       icon: 'unlock'
@@ -293,7 +304,15 @@ export async function getModuleTests(moduleId: string) {
       // Free tests (isPaid: false) come first
       if (!a.isPaid && b.isPaid) return -1
       if (a.isPaid && !b.isPaid) return 1
-      return 0
+      // Within same tier, sort by title with natural (numeric-aware) order
+      // e.g. "Free Test 1" < "Free Test 2" < "Free Test 10"
+      const parseTitle = (t: string) => {
+        const m = t.match(/^(.*?)(\d+)\s*$/)
+        return m ? { prefix: m[1].toLowerCase(), num: parseInt(m[2]) } : { prefix: t.toLowerCase(), num: 0 }
+      }
+      const pa = parseTitle(a.title), pb = parseTitle(b.title)
+      if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix)
+      return pa.num - pb.num
     })
   }
 }
@@ -304,10 +323,23 @@ export async function getTestData(testId: string) {
 
   if (!user) return null
 
-  // Get test details
-  const { data: test } = await supabase
+  // Get test details with module name
+  const { data: test, error: testError } = await supabase
     .from('test_sets')
-    .select('id, title, description, time_limit_minutes, randomize_questions, randomize_answers, marks_per_question, negative_marks, module_id, price, test_type')
+    .select(`
+      id, 
+      title, 
+      description, 
+      time_limit_minutes, 
+      randomize_questions, 
+      randomize_answers, 
+      marks_per_question, 
+      negative_marks, 
+      module_id, 
+      price, 
+      test_type,
+      modules(name)
+    `)
     .eq('id', testId)
     .single()
 
@@ -359,27 +391,53 @@ export async function getTestData(testId: string) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // 1. Fetch question IDs and sort order from test_questions first
   const { data: questionLinks, error: linkError } = await adminClient
     .from('test_questions')
-    .select(`
-      question_id,
-      sort_order,
-      questions(*)
-    `)
+    .select('question_id, sort_order')
     .eq('test_set_id', testId)
     .order('sort_order', { ascending: true })
 
-  // Special Handling for Essay Tests: Randomly select 2 questions from the bank
+  if (linkError) {
+    console.error('Error fetching question links:', linkError)
+  }
+
+  // 2. Extract unique question IDs and fetch objects in batches to avoid URL/PostgREST limits
+  const uniqueQuestionIds = Array.from(new Set(questionLinks?.map(l => l.question_id) || []))
+  let questionsData: any[] = []
+  
+  if (uniqueQuestionIds.length > 0) {
+    const BATCH_SIZE = 20 // Reduced to 20 to handle potential server row limits
+    for (let i = 0; i < uniqueQuestionIds.length; i += BATCH_SIZE) {
+      const batchIds = uniqueQuestionIds.slice(i, i + BATCH_SIZE)
+      const { data: qData, error: qError } = await adminClient
+        .from('questions')
+        .select('*')
+        .in('id', batchIds)
+      
+      if (qError) {
+        console.error(`Error fetching questions batch ${i / BATCH_SIZE + 1}:`, qError)
+        continue
+      }
+      if (qData) {
+        questionsData = [...questionsData, ...qData]
+      }
+    }
+  }
+
+  // 3. Create a map for quick lookup
+  const questionMap = new Map(questionsData.map(q => [q.id, q]))
+
+  // Essay Tests: always randomly select 2 questions from the bank (ignore pre-assigned links)
   if (test.test_type === 'essay') {
     const { data: bankQuestions, error: bankError } = await adminClient
       .from('questions')
       .select('*')
       .eq('module_id', test.module_id)
       .eq('question_type', 'essay')
-      .limit(50) // Adjust bank size limit if needed
+      .limit(50)
 
     if (!bankError && bankQuestions && bankQuestions.length > 0) {
-      // Pick 2 random questions
       const shuffled = [...bankQuestions].sort(() => Math.random() - 0.5)
       const selected = shuffled.slice(0, 2)
       
@@ -389,33 +447,28 @@ export async function getTestData(testId: string) {
         questions: selected.map(q => ({
           ...q,
           question_text: String(q.question_text || '').trim(),
-          options: [] // Essays don't have multiple choice options
+          options: [],
+          max_length: q.max_length || 1000
         }))
       }
     }
   }
 
-  if (linkError) {
-    console.error('Error fetching question links:', linkError)
-  }
-
+  // Map links back to full question objects, ensuring sort order and handling duplicates
   let questions = (questionLinks || [])
     .map((link: any) => {
-      // Handle cases where PostgREST returns an array for the JOIN or just the object
-      let q = link.questions
-      if (Array.isArray(q)) {
-        q = q[0]
-      }
+      const q = questionMap.get(link.question_id)
       
-      // Be strictly permissive: only return null if no question object is found at all
-      if (!q) return null
+      if (!q) {
+        console.warn(`Question ${link.question_id} linked to test ${testId} not found in questions table.`)
+        return null
+      }
       
       const questionText = String(q.question_text || '').trim()
       
-      // Map options safely
+      // Standardize Options Mapping
       let rawOptions = q.options || []
       
-      // Handle case where rawOptions might be a string (JSONB drift)
       if (typeof rawOptions === 'string') {
         try {
           rawOptions = JSON.parse(rawOptions)
@@ -424,34 +477,46 @@ export async function getTestData(testId: string) {
         }
       }
 
-      let parsedOptions: any[] = []
+      let parsedOptions: { text: string; index: number }[] = []
       
       if (Array.isArray(rawOptions)) {
         parsedOptions = rawOptions.map((opt: any, index: number) => {
           let text = ''
           let originalIndex = index
           
-          if (opt !== null && (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean')) {
-            text = String(opt)
-          } else if (opt && typeof opt === 'object') {
-            text = opt.text || opt.option || opt.value || String(Object.values(opt)[0] || '')
-            originalIndex = ('index' in opt) ? opt.index : index
+          if (opt !== null && typeof opt === 'object') {
+            const o = opt as any
+            text = o.text || o.option || o.value || String(Object.values(o)[0] || '')
+            originalIndex = ('index' in o) ? o.index : (('originalIndex' in o) ? o.originalIndex : index)
+          } else {
+            text = String(opt || '')
           }
           
-          return { text: String(text || '').trim(), index: originalIndex }
+          return { 
+            text: String(text || '').trim(), 
+            index: typeof originalIndex === 'number' ? originalIndex : index 
+          }
         })
       } else if (rawOptions && typeof rawOptions === 'object') {
-        // Handle object notation for options if present
-        parsedOptions = Object.entries(rawOptions).map(([key, val], index) => ({
-          text: String(val || '').trim(),
-          index: index
-        }))
+        parsedOptions = Object.entries(rawOptions).map(([key, val], index) => {
+          const text = (val && typeof val === 'object') 
+            ? ((val as any).text || (val as any).option || (val as any).value || String(Object.values(val as any)[0] || ''))
+            : String(val || '')
+          
+          return {
+            text: String(text || '').trim(),
+            index: parseInt(key) || index
+          }
+        })
       }
       
+      // Filter out truly empty options to avoid UI glitches
+      const finalOptions = parsedOptions.filter(opt => opt.text !== '')
+
       return {
         ...q,
         question_text: questionText || '(No question text provided)',
-        options: parsedOptions.filter(opt => opt.text !== '')
+        options: finalOptions
       }
     })
     .filter((q: any) => q !== null)
@@ -500,6 +565,7 @@ export async function getTestData(testId: string) {
 
   return {
     ...test,
+    module_name: (test.modules as any)?.name || 'General',
     questions
   }
 }
@@ -575,6 +641,8 @@ export async function getResultDetails(resultId: string) {
       time_spent_seconds,
       is_violation,
       completed_at,
+      status,
+      feedback,
       test_sets(
         id,
         title,
@@ -585,6 +653,7 @@ export async function getResultDetails(resultId: string) {
         show_answers,
         show_explanation,
         attempts_allowed,
+        test_type,
         module_id,
         modules(name)
       )
@@ -645,14 +714,20 @@ export async function getResultDetails(resultId: string) {
     hasReachedLimit = attemptsUsed >= attemptsAllowed
   }
 
+  const resultStatus = (data as any).status || 'completed'
+  const isEssayPending = resultStatus === 'under_review'
+
   return {
     ...data,
     accuracy,
     status,
+    resultStatus,
+    isEssayPending,
+    feedback: (data as any).feedback || null,
     isViolation,
-    showScore: test.show_score,
-    showAnswers: test.show_answers,
-    showExplanation: test.show_explanation,
+    showScore: isEssayPending ? false : test.show_score,
+    showAnswers: isEssayPending ? false : test.show_answers,
+    showExplanation: isEssayPending ? false : test.show_explanation,
     moduleName: test?.modules?.name || 'General',
     attemptsAllowed,
     attemptsUsed,
@@ -1231,8 +1306,9 @@ export async function finalizeTest(sessionId: string, isViolation: boolean = fal
   const maxScore = totalQuestions * Number(testData.marks_per_question || 1)
   const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0
 
-  // Create final result
-  let { data: result, error: resultError } = await supabase
+  // Create final result — use service role so DB triggers can access auth.users
+  const resultClient = getAdminClient()
+  let { data: result, error: resultError } = await resultClient
     .from('test_results')
     .insert({
       user_id: user.id,
@@ -1250,7 +1326,7 @@ export async function finalizeTest(sessionId: string, isViolation: boolean = fal
   if (resultError) {
     // Fallback if is_violation column doesn't exist yet
     if (isViolation || resultError.code === '42703') { // 42703 is undefined_column in Postgres
-      const { data: fallbackResult, error: fallbackError } = await supabase
+      const { data: fallbackResult, error: fallbackError } = await resultClient
         .from('test_results')
         .insert({
           user_id: user.id,
@@ -1276,13 +1352,89 @@ export async function finalizeTest(sessionId: string, isViolation: boolean = fal
     .update({ status: 'completed', updated_at: new Date().toISOString() })
     .eq('id', sessionId)
 
+  const isEssay = (session.test_sets as any)?.test_type === 'essay'
+
   // Add notification
   await supabase.from('notifications').insert({
     user_id: user.id,
     type: 'test_completed',
-    title: 'Test Completed',
-    message: `You completed "${testData.title}" with a score of ${Math.round(percentage)}%.`
+    title: isEssay ? 'Essay Submitted' : 'Test Completed',
+    message: isEssay
+      ? `Your essay "${testData.title}" has been submitted. Results will be sent to you within 24 hours.`
+      : `You completed "${testData.title}" with a score of ${Math.round(percentage)}%.`
   })
+
+  // Send confirmation email for essay submissions
+  if (isEssay && user.email) {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://wings-academy-mock-test-project.vercel.app'
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle()
+    const displayName = (profile as any)?.full_name || user.email.split('@')[0]
+
+    // Confirmation email to student
+    createMailTransporter().sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: user.email,
+      subject: `Essay Submitted — Results Within 24 Hours | Wings Academy`,
+      html: `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/></head>
+<body style="font-family:Arial,sans-serif;background:#f4f6fb;padding:32px 0;margin:0;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="600" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,44,115,0.08);">
+<tr><td style="background:#142c73;padding:32px 40px;text-align:center;">
+  <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:900;">Wings Academy</h1>
+  <p style="color:#93b4ff;margin:8px 0 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:2px;">Mock Test Platform</p>
+</td></tr>
+<tr><td style="padding:40px;">
+  <h2 style="color:#142c73;font-size:20px;margin:0 0 16px;">Essay Submitted Successfully</h2>
+  <p style="color:#475569;font-size:15px;line-height:1.7;">Dear <strong>${displayName}</strong>,</p>
+  <p style="color:#475569;font-size:15px;line-height:1.7;">Your essay for <strong>${testData.title}</strong> has been successfully submitted and is currently under review.</p>
+  <div style="background:#f0f4ff;border-left:4px solid #142c73;border-radius:8px;padding:20px 24px;margin:24px 0;">
+    <p style="color:#142c73;font-weight:900;font-size:14px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">What happens next?</p>
+    <p style="color:#475569;font-size:14px;margin:0;line-height:1.7;">Our instructors will review and grade your essay. You will receive your results and feedback by email <strong>within 24 hours</strong>.</p>
+  </div>
+  <p style="color:#94a3b8;font-size:13px;margin:32px 0 0;">Questions? Contact us at <a href="mailto:${adminEmail}" style="color:#142c73;">${adminEmail}</a>.</p>
+</td></tr>
+<tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+  <p style="color:#94a3b8;font-size:12px;margin:0;">© Wings Academy — <a href="${siteUrl}" style="color:#142c73;">${siteUrl}</a></p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`
+    }).catch((err: any) => console.error('Essay submission email error:', err))
+
+    // Alert admin to grade
+    if (adminEmail) {
+      createMailTransporter().sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: adminEmail,
+        subject: `[Action Required] Essay Submitted — ${displayName} | ${testData.title}`,
+        html: `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/></head>
+<body style="font-family:Arial,sans-serif;background:#f4f6fb;padding:32px 0;margin:0;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="600" style="background:#ffffff;border-radius:16px;overflow:hidden;">
+<tr><td style="background:#142c73;padding:24px 40px;">
+  <h1 style="color:#ffffff;margin:0;font-size:20px;font-weight:900;">Wings Academy — Admin Alert</h1>
+</td></tr>
+<tr><td style="padding:32px 40px;">
+  <h2 style="color:#142c73;font-size:18px;margin:0 0 16px;">New Essay Submitted for Grading</h2>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="color:#64748b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;width:120px;"><strong>Student</strong></td><td style="color:#1e293b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;">${displayName} (${user.email})</td></tr>
+    <tr><td style="color:#64748b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;"><strong>Test</strong></td><td style="color:#1e293b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;">${testData.title}</td></tr>
+    <tr><td style="color:#64748b;font-size:14px;padding:8px 0;"><strong>Submitted</strong></td><td style="color:#1e293b;font-size:14px;padding:8px 0;">${new Date().toLocaleString()}</td></tr>
+  </table>
+  <p style="margin:24px 0 0;"><a href="${siteUrl}/admin/results" style="background:#142c73;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;">Grade Essay →</a></p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`
+      }).catch((err: any) => console.error('Admin essay alert email error:', err))
+    }
+  }
 
   return { success: true, resultId: result.id }
 }

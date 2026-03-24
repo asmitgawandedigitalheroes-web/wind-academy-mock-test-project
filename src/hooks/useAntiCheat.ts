@@ -482,7 +482,8 @@ export function useAntiCheat({
             console.debug('isExtended check bypassed:', e)
           }
           
-          const detected = isOffscreen || isExtended
+          // TEMPORARY BYPASS: Multi-monitor detection disabled as requested
+          const detected = false // isOffscreen || isExtended
           setIsMultiMonitor(detected)
 
           if (detected && !violationLoggedRef.current) {

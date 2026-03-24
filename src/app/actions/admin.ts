@@ -775,108 +775,124 @@ export async function bulkUploadQuestions(testSetId: string, moduleId: string, q
   let errorCount = 0
   let lastError = null
 
+  // --- Phase 1: Parse and validate all questions ---
+  const parsedRows: {
+    module_id: string
+    question_text: string
+    question_type: 'single' | 'multiple' | 'essay'
+    options: string[]
+    correct_options: number[]
+    correct_option_index: number | null
+    difficulty_level: string
+    explanation: string | null
+    marks: number
+    min_length: number | null
+    max_length: number | null
+  }[] = []
+
   for (const q of finalQuestions) {
-    try {
-      // Robust field mapping
-      const qText = q.question_text || q.Question || q.question;
-      const qType = q.question_type || q.Type || q.type;
-      
-      // Map options A-E, being careful about case sensitivity
-      const rawOptions = [
-        q.option_a ?? q.OptionA ?? q.A,
-        q.option_b ?? q.OptionB ?? q.B,
-        q.option_c ?? q.OptionC ?? q.C,
-        q.option_d ?? q.OptionD ?? q.D,
-        q.option_e ?? q.OptionE ?? q.E
-      ];
-      const options = rawOptions
-        .filter(o => o !== undefined && o !== null && String(o).trim() !== '')
-        .map(o => String(o));
+    const qText = q.question_text || q.Question || q.question;
+    const qType = q.question_type || q.Type || q.type;
 
-      const correctStr = String(q.correct_answer || q.CorrectAnswer || q.correct_options || '');
-      const difficulty = (String(q.difficulty || q.Difficulty || 'medium')).toLowerCase() as 'easy' | 'medium' | 'hard';
-      const expl = q.explanation || q.Explanation;
-      const marks = parseInt(String(q.marks || q.Marks || '1')) || 1;
-      const minLen = parseInt(String(q.min_length || q.MinLength || '')) || null;
-      const maxLen = parseInt(String(q.max_length || q.MaxLength || '')) || null;
+    const rawOptions = [
+      q.option_a ?? q.OptionA ?? q.A,
+      q.option_b ?? q.OptionB ?? q.B,
+      q.option_c ?? q.OptionC ?? q.C,
+      q.option_d ?? q.OptionD ?? q.D,
+      q.option_e ?? q.OptionE ?? q.E
+    ];
+    const options = rawOptions
+      .filter(o => o !== undefined && o !== null && String(o).trim() !== '')
+      .map(o => String(o).trim());
 
-      // Friendly type mapping
-      let type: 'single' | 'multiple' | 'essay' = 'single';
-      const qTypeLower = String(qType || '').toLowerCase();
-      if (qTypeLower === 'essay') {
-        type = 'essay';
-      } else if (qTypeLower.includes('multiple') || qTypeLower === 'multiple choice') {
-        type = 'multiple';
-      }
+    const correctStr = String(q.correct_answer || q.CorrectAnswer || q.correct_options || '');
+    const difficulty = (String(q.difficulty || q.Difficulty || 'medium')).toLowerCase();
+    const expl = q.explanation || q.Explanation || null;
+    const marks = parseInt(String(q.marks || q.Marks || '1')) || 1;
+    const minLen = parseInt(String(q.min_length || q.MinLength || '')) || null;
+    const maxLen = parseInt(String(q.max_length || q.MaxLength || '')) || null;
 
-      if (!qText || (type !== 'essay' && options.length < 2)) {
-        console.error('Invalid question data (missing text or options):', q)
-        errorCount++
-        continue
-      }
-      
-      // Parse correct options (A, B, C or numbers)
-      const correctParts = type === 'essay' ? [] : correctStr.split(/[|,]/).map(p => p.trim().toUpperCase()).filter(p => p !== '')
-      
-      const correctOptionsIndices = type === 'essay' ? [] : correctParts.map(part => {
-        if (/^[A-E]$/.test(part)) {
-          return part.charCodeAt(0) - 65;
-        }
-        const num = parseInt(part);
-        return !isNaN(num) ? num : -1;
-      }).filter(idx => idx >= 0 && idx < options.length);
+    let type: 'single' | 'multiple' | 'essay' = 'single';
+    const qTypeLower = String(qType || '').toLowerCase();
+    if (qTypeLower === 'essay') {
+      type = 'essay';
+    } else if (qTypeLower.includes('multiple') || qTypeLower === 'multiple choice') {
+      type = 'multiple';
+    }
 
-      if (type !== 'essay' && correctOptionsIndices.length === 0) {
-        console.error('No valid correct options detected for:', qText, 'Correct string was:', correctStr)
-        errorCount++
-        continue
-      }
-
-      // Auto-promote to multiple if more than one correct index is provided
-      const finalType = type === 'essay' ? 'essay' : (correctOptionsIndices.length > 1 ? 'multiple' : type);
-
-      const { data: qData, error: qError } = await supabase
-        .from('questions')
-        .insert([{
-          module_id: moduleId,
-          question_text: qText,
-          question_type: finalType,
-          options: (options || []).map(opt => String(opt || '').trim()).filter(opt => opt !== ''),
-          correct_options: correctOptionsIndices,
-          correct_option_index: finalType === 'single' ? correctOptionsIndices[0] : null,
-          difficulty_level: ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium',
-          explanation: expl || null,
-          marks: marks,
-          min_length: minLen,
-          max_length: maxLen
-        }])
-        .select()
-        .single()
-
-      if (qError) {
-        console.error('Supabase Error (Questions):', qError)
-        throw qError
-      }
-
-      // Link to test set
-      const { error: linkError } = await supabase
-        .from('test_questions')
-        .insert([{
-          test_set_id: testSetId,
-          question_id: qData.id,
-          sort_order: successCount // Initial sorting
-        }])
-
-      if (linkError) {
-        console.error('Supabase Error (Link):', linkError)
-        throw linkError
-      }
-
-      successCount++
-    } catch (err: any) {
-      console.error('Catch Error during upload:', err)
-      lastError = err?.message || 'Unknown error'
+    if (!qText || (type !== 'essay' && options.length < 2)) {
+      console.error('Invalid question data (missing text or options):', q)
       errorCount++
+      continue
+    }
+
+    const correctParts = type === 'essay' ? [] : correctStr.split(/[|,]/).map(p => p.trim().toUpperCase()).filter(p => p !== '')
+    const correctOptionsIndices = type === 'essay' ? [] : correctParts.map(part => {
+      if (/^[A-E]$/.test(part)) return part.charCodeAt(0) - 65;
+      const num = parseInt(part);
+      return !isNaN(num) ? num : -1;
+    }).filter(idx => idx >= 0 && idx < options.length);
+
+    if (type !== 'essay' && correctOptionsIndices.length === 0) {
+      console.error('No valid correct options detected for:', qText, 'Correct string was:', correctStr)
+      errorCount++
+      continue
+    }
+
+    const finalType: 'single' | 'multiple' | 'essay' = type === 'essay' ? 'essay' : (correctOptionsIndices.length > 1 ? 'multiple' : type);
+
+    parsedRows.push({
+      module_id: moduleId,
+      question_text: qText,
+      question_type: finalType,
+      options,
+      correct_options: correctOptionsIndices,
+      correct_option_index: finalType === 'single' ? correctOptionsIndices[0] : null,
+      difficulty_level: ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium',
+      explanation: expl,
+      marks,
+      min_length: minLen,
+      max_length: maxLen
+    })
+  }
+
+  // --- Phase 2: Batch insert questions ---
+  if (parsedRows.length > 0) {
+    const BATCH = 200
+    for (let i = 0; i < parsedRows.length; i += BATCH) {
+      const chunk = parsedRows.slice(i, i + BATCH)
+      const { data: inserted, error: qBatchErr } = await supabase
+        .from('questions')
+        .insert(chunk)
+        .select('id')
+
+      if (qBatchErr || !inserted) {
+        console.error('Supabase batch questions insert error:', qBatchErr)
+        lastError = qBatchErr?.message || 'Batch insert failed'
+        errorCount += chunk.length
+        continue
+      }
+
+      // --- Phase 3: Batch insert test_questions links for this chunk ---
+      const links = inserted.map((row, idx) => ({
+        test_set_id: testSetId,
+        question_id: row.id,
+        sort_order: currentCount + successCount + idx
+      }))
+
+      const { error: linkBatchErr } = await supabase
+        .from('test_questions')
+        .insert(links)
+
+      if (linkBatchErr) {
+        console.error('Supabase batch test_questions insert error:', linkBatchErr)
+        lastError = linkBatchErr?.message || 'Batch link insert failed'
+        // Questions were inserted but not linked — count as errors
+        errorCount += chunk.length
+        continue
+      }
+
+      successCount += inserted.length
     }
   }
 
@@ -1501,31 +1517,135 @@ export async function checkDatabaseHealth() {
 
 // ---------------------------------------------------------------------------
 // Essay Grading
+// Fetch essay answers for a specific result (used by admin to grade)
+export async function getEssayAnswers(testSetId: string, userId: string) {
+  const supabase = await createClient()
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  
+  const { data: { user: adminUser } } = await supabase.auth.getUser()
+  if (!adminUser) return { error: 'Not authenticated' }
+
+  // 1. Find the test attempt
+  const { data: attempt, error: attemptError } = await serviceClient
+    .from('test_attempts')
+    .select('id')
+    .eq('test_set_id', testSetId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (attemptError || !attempt) {
+    console.error('getEssayAnswers: Attempt not found:', attemptError);
+    return { error: 'Attempt not found' }
+  }
+
+  // 2. Fetch answers
+  const { data: answers, error: answersError } = await serviceClient
+    .from('student_answers')
+    .select(`
+      essay_answer,
+      questions (
+        id,
+        question_text,
+        min_length,
+        max_length
+      )
+    `)
+    .eq('attempt_id', attempt.id)
+
+  if (answersError) {
+    console.error('getEssayAnswers: Error fetching answers:', answersError);
+    return { error: answersError.message }
+  }
+
+  return { success: true, answers }
+}
+
 // ---------------------------------------------------------------------------
 
-// Admin grades a submitted essay result.
-// Updates the test_results row → DB trigger fires → edge function sends email.
+// Admin grades a submitted essay result and emails the student their results.
 export async function gradeEssayResult(
   resultId: string,
   score: number,
   feedback: string
 ) {
   const supabase = await createClient()
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) return { error: 'Not authenticated' }
+
+  // Fetch result + student info before updating
+  const { data: resultRow } = await serviceClient
+    .from('test_results')
+    .select('user_id, test_sets(title)')
+    .eq('id', resultId)
+    .single()
 
   const { error } = await supabase
     .from('test_results')
-    .update({
-      score,
-      feedback,
-      status: 'graded',
-      graded_by: user.id
-    })
+    .update({ score, feedback, status: 'graded', graded_by: user.id })
     .eq('id', resultId)
 
   if (error) return { error: error.message }
+
+  // Email student their results
+  if (resultRow) {
+    const { data: studentProfile } = await serviceClient
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', resultRow.user_id)
+      .maybeSingle()
+
+    const studentEmail = (studentProfile as any)?.email
+    const displayName = (studentProfile as any)?.full_name || 'Student'
+    const testTitle = (resultRow.test_sets as any)?.title || 'Essay Test'
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://wings-academy-mock-test-project.vercel.app'
+    const isPassed = score >= 75
+
+    if (studentEmail) {
+      createMailTransporter().sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: studentEmail,
+        subject: `Your Essay Results — ${testTitle} | Wings Academy`,
+        html: `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/></head>
+<body style="font-family:Arial,sans-serif;background:#f4f6fb;padding:32px 0;margin:0;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="600" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,44,115,0.08);">
+<tr><td style="background:#142c73;padding:32px 40px;text-align:center;">
+  <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:900;">Wings Academy</h1>
+  <p style="color:#93b4ff;margin:8px 0 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:2px;">Essay Results</p>
+</td></tr>
+<tr><td style="padding:40px;">
+  <h2 style="color:#142c73;font-size:20px;margin:0 0 16px;">Your Essay Has Been Graded</h2>
+  <p style="color:#475569;font-size:15px;line-height:1.7;">Dear <strong>${displayName}</strong>,</p>
+  <p style="color:#475569;font-size:15px;line-height:1.7;">Your essay for <strong>${testTitle}</strong> has been reviewed and graded.</p>
+  <div style="background:${isPassed ? '#f0fdf4' : '#fff1f2'};border-left:4px solid ${isPassed ? '#22c55e' : '#ef4444'};border-radius:8px;padding:20px 24px;margin:24px 0;text-align:center;">
+    <p style="color:#64748b;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Your Score</p>
+    <p style="color:${isPassed ? '#15803d' : '#b91c1c'};font-size:48px;font-weight:900;margin:0;">${Math.round(score)}%</p>
+    <p style="color:${isPassed ? '#16a34a' : '#dc2626'};font-size:14px;font-weight:700;margin:8px 0 0;">${isPassed ? 'Passed' : 'Needs Improvement'}</p>
+  </div>
+  ${feedback ? `<div style="background:#f8fafc;border-radius:8px;padding:20px 24px;margin:16px 0;">
+    <p style="color:#142c73;font-weight:900;font-size:14px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Instructor Feedback</p>
+    <p style="color:#475569;font-size:14px;margin:0;line-height:1.8;">${feedback.replace(/\n/g, '<br/>')}</p>
+  </div>` : ''}
+  <p style="margin:28px 0 0;text-align:center;"><a href="${siteUrl}/dashboard/results" style="background:#142c73;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px;">View Full Results</a></p>
+</td></tr>
+<tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+  <p style="color:#94a3b8;font-size:12px;margin:0;">© Wings Academy — <a href="${siteUrl}" style="color:#142c73;">${siteUrl}</a></p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`
+      }).catch((err: any) => console.error('Essay result email error:', err))
+    }
+  }
 
   revalidatePath('/admin/results')
   revalidatePath(`/admin/results/${resultId}`)
