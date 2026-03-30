@@ -14,9 +14,9 @@ import ContactForm from '@/components/contact/ContactForm'
 export default async function ContactPage() {
   const settings = await getPlatformSettings()
 
-  const email = settings?.support_email || 'support@wingsacademy.com'
-  const phone = settings?.support_phone || '+1 (234) 567-890'
-  const addressLines = (settings?.office_address || 'Aviation Center Blvd\nSuite 100\nNew York, NY 10001').split('\n')
+  const email = settings?.support_email || 'info@wingsacademy.ae'
+  const phone = settings?.support_phone || '+971 4 123 4567'
+  const addressLines = (settings?.office_address || 'Aviation Center Blvd\nSuite 100\nDubai, UAE').split('\n')
 
   return (
     <>

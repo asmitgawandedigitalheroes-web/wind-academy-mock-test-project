@@ -20,8 +20,8 @@ export default async function BlogPage() {
         <div className="container mx-auto px-4">
           {/* Header */}
           <div className="mb-16 text-center">
-            <h1 className="mb-4 text-4xl font-black text-slate-900 md:text-6xl tracking-tight">
-              Wings Academy <span className="text-primary underline decoration-primary/20 underline-offset-8">Blog</span>
+            <h1 className="mb-4 text-4xl font-black text-[#1e3a8a] md:text-6xl tracking-tight">
+              Wings Academy <span className="text-accent">Blog</span>
             </h1>
             <p className="mx-auto max-w-2xl text-lg text-gray-600">
               Your ultimate resource for AME exam preparation, industry insights, and career guidance in aviation.

@@ -3,58 +3,22 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getURL } from '@/utils/url'
-import nodemailer from 'nodemailer'
+import { sendTemplateEmail } from '@/lib/email.service'
+import { WelcomeEmail } from '@/lib/emails/templates/WelcomeEmail'
+import { PasswordResetEmail } from '@/lib/emails/templates/PasswordResetEmail'
+
+// Removed legacy createMailTransporter in favor of email.service.ts
 
 async function sendWelcomeEmail(name: string, email: string) {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, NEXT_PUBLIC_SITE_URL } = process.env
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return
-
-  const siteUrl = NEXT_PUBLIC_SITE_URL || 'https://wings-academy-mock-test-project.vercel.app'
-  const port = parseInt(SMTP_PORT || '465')
-
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port,
-    secure: port === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  })
-
-  await transporter.sendMail({
-    from: SMTP_FROM || SMTP_USER,
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://wings-academy-mock-test-project.vercel.app'
+  
+  await sendTemplateEmail({
     to: email,
     subject: 'Welcome to Wings Academy',
-    html: `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>Welcome to Wings Academy</title>
-</head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:40px;">
-  <div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:8px;text-align:center;">
-    <h2 style="color:#333;">Welcome to Wings Academy, ${name}!</h2>
-    <p style="font-size:16px;color:#555;">
-      Thank you for signing up for your mock test platform.
-    </p>
-    <p style="font-size:16px;color:#555;">
-      Please confirm your email to activate your account and start practicing.
-    </p>
-    <a href="${siteUrl}/login"
-       style="display:inline-block;margin-top:20px;padding:14px 28px;
-       background:#1e3a8a;color:white;text-decoration:none;
-       border-radius:6px;font-size:16px;font-weight:bold;">
-       Go to Login
-    </a>
-    <p style="margin-top:30px;font-size:13px;color:#888;">
-      If you didn't create this account, you can safely ignore this email.
-    </p>
-    <p style="margin-top:20px;font-size:13px;color:#888;">
-      © Wings Academy
-    </p>
-  </div>
-</body>
-</html>`.trim(),
+    template: WelcomeEmail,
+    props: { name, siteUrl }
   })
 }
 
@@ -143,15 +107,46 @@ export async function signout() {
 }
 
 export async function resetPasswordForEmail(formData: FormData) {
-  const supabase = await createClient()
   const email = formData.get('email') as string
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${getURL()}api/auth/callback?next=/reset-password`,
+  if (!process.env.RESEND_API_KEY) {
+    return redirect(`/forgot-password?error=${encodeURIComponent('Email service is not configured')}`)
+  }
+
+  // Use Supabase Admin API to generate recovery link without sending email
+  const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: {
+      redirectTo: `${getURL()}api/auth/callback?next=/reset-password`,
+    },
   })
 
   if (error) {
     return redirect(`/forgot-password?error=${encodeURIComponent(error.message)}`)
+  }
+
+  // Build the recovery URL from the returned token properties
+  const recoveryUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/verify?token=${data.properties.hashed_token}&type=recovery&redirect_to=${encodeURIComponent(`${getURL()}api/auth/callback?next=/reset-password`)}`
+
+  // Send the recovery email via Resend
+  try {
+    const result = await sendTemplateEmail({
+      to: email,
+      subject: 'Reset Your Password - Wings Academy',
+      template: PasswordResetEmail,
+      props: { recoveryUrl }
+    })
+
+    if (!result.success) throw new Error(result.error)
+  } catch (emailError: any) {
+    console.error('Recovery email send failed:', emailError.message)
+    return redirect(`/forgot-password?error=${encodeURIComponent('Failed to send recovery email. Please try again later.')}`)
   }
 
   return redirect('/forgot-password?message=Password reset link sent to your email')
