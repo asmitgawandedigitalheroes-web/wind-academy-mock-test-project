@@ -25,11 +25,18 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${requestUrl.origin}/`)
     } else {
       console.error('Auth callback error:', error.message)
+      return NextResponse.redirect(`${requestUrl.origin}/login?error=${encodeURIComponent(error.message)}`)
     }
-  } else {
-    console.error('Auth callback error: No code provided')
+  }
+  
+  // If no code is provided, it might be a fragment-based flow (implicit flow)
+  // We should redirect to the 'next' URL (if provided) and let the client-side AuthHandler pick it up
+  if (next) {
+    console.log('No code provided, but next URL exists. Redirecting to:', next)
+    return NextResponse.redirect(`${requestUrl.origin}${next}`)
   }
 
-  // return the user to an error page with some instructions
+  // fallback to the login page with an error
+  console.error('Auth callback error: No code provided and no next URL')
   return NextResponse.redirect(`${requestUrl.origin}/login?error=Could not authenticate user`)
 }
