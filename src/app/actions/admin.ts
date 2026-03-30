@@ -4,17 +4,11 @@ import { createClient } from '@/utils/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { getURL } from '@/utils/url'
-import nodemailer from 'nodemailer'
+import { sendTemplateEmail } from '@/lib/email.service'
+import { EssayResultEmail } from '@/lib/emails/templates/EssayResultEmail'
+import { ModuleUnlockedEmail } from '@/lib/emails/templates/ModuleUnlockedEmail'
 
-function createMailTransporter() {
-  const port = parseInt(process.env.SMTP_PORT || '465')
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure: port === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  })
-}
+// Removed legacy createMailTransporter in favor of email.service.ts
 
 export async function addModule(formData: {
   name: string,
@@ -1610,39 +1604,17 @@ export async function gradeEssayResult(
     const isPassed = score >= 75
 
     if (studentEmail) {
-      createMailTransporter().sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      sendTemplateEmail({
         to: studentEmail,
         subject: `Your Essay Results — ${testTitle} | Wings Academy`,
-        html: `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"/></head>
-<body style="font-family:Arial,sans-serif;background:#f4f6fb;padding:32px 0;margin:0;">
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-<table width="600" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,44,115,0.08);">
-<tr><td style="background:#142c73;padding:32px 40px;text-align:center;">
-  <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:900;">Wings Academy</h1>
-  <p style="color:#93b4ff;margin:8px 0 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:2px;">Essay Results</p>
-</td></tr>
-<tr><td style="padding:40px;">
-  <h2 style="color:#142c73;font-size:20px;margin:0 0 16px;">Your Essay Has Been Graded</h2>
-  <p style="color:#475569;font-size:15px;line-height:1.7;">Dear <strong>${displayName}</strong>,</p>
-  <p style="color:#475569;font-size:15px;line-height:1.7;">Your essay for <strong>${testTitle}</strong> has been reviewed and graded.</p>
-  <div style="background:${isPassed ? '#f0fdf4' : '#fff1f2'};border-left:4px solid ${isPassed ? '#22c55e' : '#ef4444'};border-radius:8px;padding:20px 24px;margin:24px 0;text-align:center;">
-    <p style="color:#64748b;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Your Score</p>
-    <p style="color:${isPassed ? '#15803d' : '#b91c1c'};font-size:48px;font-weight:900;margin:0;">${Math.round(score)}%</p>
-    <p style="color:${isPassed ? '#16a34a' : '#dc2626'};font-size:14px;font-weight:700;margin:8px 0 0;">${isPassed ? 'Passed' : 'Needs Improvement'}</p>
-  </div>
-  ${feedback ? `<div style="background:#f8fafc;border-radius:8px;padding:20px 24px;margin:16px 0;">
-    <p style="color:#142c73;font-weight:900;font-size:14px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Instructor Feedback</p>
-    <p style="color:#475569;font-size:14px;margin:0;line-height:1.8;">${feedback.replace(/\n/g, '<br/>')}</p>
-  </div>` : ''}
-  <p style="margin:28px 0 0;text-align:center;"><a href="${siteUrl}/dashboard/results" style="background:#142c73;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px;">View Full Results</a></p>
-</td></tr>
-<tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
-  <p style="color:#94a3b8;font-size:12px;margin:0;">© Wings Academy — <a href="${siteUrl}" style="color:#142c73;">${siteUrl}</a></p>
-</td></tr>
-</table></td></tr></table>
-</body></html>`
+        template: EssayResultEmail,
+        props: {
+          displayName,
+          testTitle,
+          score,
+          feedback,
+          siteUrl
+        }
       }).catch((err: any) => console.error('Essay result email error:', err))
     }
   }
@@ -1797,47 +1769,26 @@ export async function grantModuleAccess(userId: string, moduleId: string) {
   })
 
   // Send email to student
-  if (process.env.SMTP_HOST) {
-    const { data: student } = await serviceClient
-      .from('profiles')
-      .select('full_name, email')
-      .eq('id', userId)
-      .maybeSingle()
+  const { data: student } = await serviceClient
+    .from('profiles')
+    .select('full_name, email')
+    .eq('id', userId)
+    .maybeSingle()
 
-    if (student?.email) {
-      const studentName = student.full_name || 'Student'
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://wings-academy-mock-test-project.vercel.app'
+  if (student?.email) {
+    const studentName = student.full_name || 'Student'
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://wings-academy-mock-test-project.vercel.app'
 
-      createMailTransporter().sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: student.email,
-        subject: `Access Granted — ${moduleInfo.name}`,
-        html: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8" /></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:40px;">
-  <div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:8px;text-align:center;">
-    <h2 style="color:#333;">Module Access Granted!</h2>
-    <p style="font-size:16px;color:#555;">Hi ${studentName},</p>
-    <p style="font-size:16px;color:#555;">
-      An admin has unlocked <strong>${moduleInfo.name}</strong> for you.
-      All paid tests in this module are now available with unlimited attempts.
-    </p>
-    <a href="${siteUrl}/dashboard/modules"
-       style="display:inline-block;margin-top:20px;padding:14px 28px;
-       background:#1e3a8a;color:white;text-decoration:none;
-       border-radius:6px;font-size:16px;font-weight:bold;">
-       Start Practicing
-    </a>
-    <p style="margin-top:30px;font-size:13px;color:#888;">
-      © Wings Academy
-    </p>
-  </div>
-</body>
-</html>`.trim(),
-      }).catch(err => console.error('Access grant email failed:', err.message))
-    }
+    sendTemplateEmail({
+      to: student.email,
+      subject: `Access Granted — ${moduleInfo.name}`,
+      template: ModuleUnlockedEmail,
+      props: {
+        studentName,
+        moduleName: moduleInfo.name,
+        siteUrl
+      }
+    }).catch(err => console.error('Access grant email failed:', err.message))
   }
 
   revalidatePath(`/admin/users/${userId}`)

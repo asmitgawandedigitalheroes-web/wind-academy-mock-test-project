@@ -1,25 +1,58 @@
 // Supabase Edge Function — send-essay-result
 //
 // Triggered by the DB webhook/trigger when test_results.status changes to 'graded'.
-// Sends the student an email with their score and feedback via SMTP.
+// Sends the student an email with their score and feedback via Resend API.
 //
 // REQUIRED ENV VARS (set in Supabase Dashboard → Settings → Edge Functions → Secrets):
-//   SMTP_HOST=smtp.supabase.io
-//   SMTP_PORT=465
-//   SMTP_USER=your-smtp-username
-//   SMTP_PASS=your-smtp-password
-//   SMTP_FROM=Wings Academy <results@wingsacademy.ae>
+//   RESEND_API_KEY=re_...
+//   EMAIL_FROM=Wings Academy <noreply@wingsacademy.ae>
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer";
 
-const FROM_EMAIL = "Wings Academy <results@wingsacademy.ae>";
+const RESEND_API_URL = "https://api.resend.com/emails";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+async function sendViaResend(opts: {
+  to: string | string[];
+  subject: string;
+  html: string;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY is not set in Edge Function secrets.");
+    return { success: false, error: "RESEND_API_KEY not configured" };
+  }
+
+  const from =
+    Deno.env.get("EMAIL_FROM") ?? "Wings Academy <noreply@wingsacademy.ae>";
+
+  const res = await fetch(RESEND_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: Array.isArray(opts.to) ? opts.to : [opts.to],
+      subject: opts.subject,
+      html: opts.html,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("Resend API error:", data);
+    return { success: false, error: data?.message ?? "Resend error" };
+  }
+
+  return { success: true, id: data.id };
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -62,7 +95,12 @@ Deno.serve(async (req: Request) => {
     const testTitle = (resultData.test as any).title;
     const score = Math.round(resultData.score);
     const feedback = resultData.feedback || "No feedback provided.";
-    const userName = (resultData.user as any).raw_user_meta_data?.full_name || "Student";
+    const userName =
+      (resultData.user as any).raw_user_meta_data?.full_name || "Student";
+    const isPassed = score >= 75;
+    const siteUrl =
+      Deno.env.get("NEXT_PUBLIC_SITE_URL") ??
+      "https://wings-academy-mock-test-project.vercel.app";
 
     // HTML email body
     const htmlBody = `
@@ -88,9 +126,10 @@ Deno.serve(async (req: Request) => {
       </p>
 
       <!-- Score Card -->
-      <div style="background:#f1f5f9;border-radius:16px;padding:24px;text-align:center;margin-bottom:32px;">
+      <div style="background:${isPassed ? "#f0fdf4" : "#fff1f2"};border-left:4px solid ${isPassed ? "#22c55e" : "#ef4444"};border-radius:16px;padding:24px;text-align:center;margin-bottom:32px;">
         <p style="color:#64748b;font-size:11px;font-weight:900;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">Your Score</p>
-        <p style="color:#0f172a;font-size:56px;font-weight:900;margin:0;line-height:1;">${score}%</p>
+        <p style="color:${isPassed ? "#15803d" : "#b91c1c"};font-size:56px;font-weight:900;margin:0;line-height:1;">${score}%</p>
+        <p style="color:${isPassed ? "#16a34a" : "#dc2626"};font-size:14px;font-weight:700;margin:12px 0 0;">${isPassed ? "✅ Passed" : "❌ Needs Improvement"}</p>
       </div>
 
       <!-- Feedback -->
@@ -103,7 +142,7 @@ Deno.serve(async (req: Request) => {
         Please log in to the Wings Academy platform to view your full submission details. If you have any questions about your result, please reach out to your instructor.
       </p>
 
-      <a href="https://wings-academy.vercel.app/dashboard" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:16px 32px;border-radius:12px;font-weight:900;font-size:13px;letter-spacing:1px;text-transform:uppercase;">
+      <a href="${siteUrl}/dashboard/results" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:16px 32px;border-radius:12px;font-weight:900;font-size:13px;letter-spacing:1px;text-transform:uppercase;">
         View My Results →
       </a>
     </div>
@@ -118,49 +157,47 @@ Deno.serve(async (req: Request) => {
 </html>
     `.trim();
 
-    // Send via SMTP
-    const smtpHost = Deno.env.get("SMTP_HOST") ?? "";
-    if (!smtpHost) {
-      console.warn("SMTP_HOST is not set — email not sent. Add SMTP_* vars in Supabase Edge Function secrets.");
-      return new Response(JSON.stringify({ success: false, message: "SMTP not configured" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    const smtpPort = parseInt(Deno.env.get("SMTP_PORT") ?? "465");
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: {
-        user: Deno.env.get("SMTP_USER") ?? "",
-        pass: Deno.env.get("SMTP_PASS") ?? "",
-      },
-    });
-
-    await transporter.sendMail({
-      from: Deno.env.get("SMTP_FROM") ?? FROM_EMAIL,
+    // Send via Resend
+    const result = await sendViaResend({
       to: userEmail,
       subject: `Your Essay Result — ${testTitle} (${score}%)`,
       html: htmlBody,
     });
 
-    console.log(`Email sent to ${userEmail} for test "${testTitle}"`);
+    if (!result.success) {
+      console.warn("Resend failed:", result.error);
+      return new Response(
+        JSON.stringify({ success: false, message: result.error }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    }
 
-    return new Response(JSON.stringify({
-      success: true,
-      message: `Email sent to ${userEmail}`,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    console.log(
+      `Essay result email sent to ${userEmail} for test "${testTitle}". ID: ${result.id}`
+    );
 
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Email sent to ${userEmail}`,
+        id: result.id,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error: any) {
     console.error("Edge function error:", error);
-    return new Response(JSON.stringify({ error: error?.message || "Internal Server Error" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
+    return new Response(
+      JSON.stringify({ error: error?.message || "Internal Server Error" }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      }
+    );
   }
 });

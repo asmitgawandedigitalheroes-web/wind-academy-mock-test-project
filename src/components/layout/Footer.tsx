@@ -84,16 +84,23 @@ const Footer = async () => {
           <div>
             <h4 className="text-lg font-black mb-8 uppercase tracking-widest text-accent">Contact Us</h4>
             <div className="space-y-6">
+              {settings?.support_email && (
+                <div>
+                  <p className="text-white font-bold mb-1">Email</p>
+                  <Link href={`mailto:${settings.support_email}`} className="text-slate-400 text-sm leading-relaxed font-medium hover:text-accent transition-colors">
+                    {settings.support_email}
+                  </Link>
+                </div>
+              )}
 
-              {/* <div>
-                <p className="text-white font-bold mb-1">Visit Us</p>
-                <p className="text-slate-400 text-sm leading-relaxed font-medium">Aviation Center Blvd, Suite 100New York, NY 10001</p>
-              </div> */}
-
-              <div>
-                <p className="text-white font-bold mb-1">Call Us</p>
-                <p className="text-slate-400 text-sm font-medium">+91 98765 43210</p>
-              </div>
+              {settings?.support_phone && (
+                <div>
+                  <p className="text-white font-bold mb-1">Call Us</p>
+                  <Link href={`tel:${settings.support_phone}`} className="text-slate-400 text-sm font-medium hover:text-accent transition-colors">
+                    {settings.support_phone}
+                  </Link>
+                </div>
+              )}
 
               <div>
                 <p className="text-white font-bold mb-1">Office Hours</p>

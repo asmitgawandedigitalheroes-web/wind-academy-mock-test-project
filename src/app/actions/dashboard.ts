@@ -3,17 +3,9 @@
 import { createClient } from '@/utils/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
-import nodemailer from 'nodemailer'
-
-function createMailTransporter() {
-  const port = parseInt(process.env.SMTP_PORT || '465')
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure: port === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  })
-}
+import { sendTemplateEmail } from '@/lib/email.service'
+import { EssaySubmittedEmail } from '@/lib/emails/templates/EssaySubmittedEmail'
+import { AdminEssayAlertEmail } from '@/lib/emails/templates/AdminEssayAlertEmail'
 
 // Service role client for bypassing RLS on payments table (students can't read their own payments via RLS)
 function getAdminClient() {
@@ -1396,61 +1388,30 @@ export async function finalizeTest(sessionId: string, isViolation: boolean = fal
     const displayName = (profile as any)?.full_name || user.email.split('@')[0]
 
     // Confirmation email to student
-    createMailTransporter().sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    sendTemplateEmail({
       to: user.email,
       subject: `Essay Submitted — Results Within 24 Hours | Wings Academy`,
-      html: `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"/></head>
-<body style="font-family:Arial,sans-serif;background:#f4f6fb;padding:32px 0;margin:0;">
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-<table width="600" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,44,115,0.08);">
-<tr><td style="background:#142c73;padding:32px 40px;text-align:center;">
-  <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:900;">Wings Academy</h1>
-  <p style="color:#93b4ff;margin:8px 0 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:2px;">Mock Test Platform</p>
-</td></tr>
-<tr><td style="padding:40px;">
-  <h2 style="color:#142c73;font-size:20px;margin:0 0 16px;">Essay Submitted Successfully</h2>
-  <p style="color:#475569;font-size:15px;line-height:1.7;">Dear <strong>${displayName}</strong>,</p>
-  <p style="color:#475569;font-size:15px;line-height:1.7;">Your essay for <strong>${testData.title}</strong> has been successfully submitted and is currently under review.</p>
-  <div style="background:#f0f4ff;border-left:4px solid #142c73;border-radius:8px;padding:20px 24px;margin:24px 0;">
-    <p style="color:#142c73;font-weight:900;font-size:14px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">What happens next?</p>
-    <p style="color:#475569;font-size:14px;margin:0;line-height:1.7;">Our instructors will review and grade your essay. You will receive your results and feedback by email <strong>within 24 hours</strong>.</p>
-  </div>
-  <p style="color:#94a3b8;font-size:13px;margin:32px 0 0;">Questions? Contact us at <a href="mailto:${adminEmail}" style="color:#142c73;">${adminEmail}</a>.</p>
-</td></tr>
-<tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
-  <p style="color:#94a3b8;font-size:12px;margin:0;">© Wings Academy — <a href="${siteUrl}" style="color:#142c73;">${siteUrl}</a></p>
-</td></tr>
-</table></td></tr></table>
-</body></html>`
+      template: EssaySubmittedEmail,
+      props: {
+        displayName,
+        testTitle: testData.title,
+        adminEmail,
+        siteUrl
+      }
     }).catch((err: any) => console.error('Essay submission email error:', err))
 
     // Alert admin to grade
     if (adminEmail) {
-      createMailTransporter().sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      sendTemplateEmail({
         to: adminEmail,
         subject: `[Action Required] Essay Submitted — ${displayName} | ${testData.title}`,
-        html: `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"/></head>
-<body style="font-family:Arial,sans-serif;background:#f4f6fb;padding:32px 0;margin:0;">
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-<table width="600" style="background:#ffffff;border-radius:16px;overflow:hidden;">
-<tr><td style="background:#142c73;padding:24px 40px;">
-  <h1 style="color:#ffffff;margin:0;font-size:20px;font-weight:900;">Wings Academy — Admin Alert</h1>
-</td></tr>
-<tr><td style="padding:32px 40px;">
-  <h2 style="color:#142c73;font-size:18px;margin:0 0 16px;">New Essay Submitted for Grading</h2>
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="color:#64748b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;width:120px;"><strong>Student</strong></td><td style="color:#1e293b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;">${displayName} (${user.email})</td></tr>
-    <tr><td style="color:#64748b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;"><strong>Test</strong></td><td style="color:#1e293b;font-size:14px;padding:8px 0;border-bottom:1px solid #f1f5f9;">${testData.title}</td></tr>
-    <tr><td style="color:#64748b;font-size:14px;padding:8px 0;"><strong>Submitted</strong></td><td style="color:#1e293b;font-size:14px;padding:8px 0;">${new Date().toLocaleString()}</td></tr>
-  </table>
-  <p style="margin:24px 0 0;"><a href="${siteUrl}/admin/results" style="background:#142c73;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;">Grade Essay →</a></p>
-</td></tr>
-</table></td></tr></table>
-</body></html>`
+        template: AdminEssayAlertEmail,
+        props: {
+          displayName,
+          studentEmail: user.email,
+          testTitle: testData.title,
+          siteUrl
+        }
       }).catch((err: any) => console.error('Admin essay alert email error:', err))
     }
   }

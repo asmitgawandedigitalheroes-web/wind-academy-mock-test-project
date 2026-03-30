@@ -6,17 +6,13 @@
 // Sends an email to the admin(s) so they know a student paid — even if they aren't logged in.
 //
 // REQUIRED ENV VARS (set in Supabase Dashboard → Settings → Edge Functions → Secrets):
-//   SMTP_HOST=smtp.supabase.io
-//   SMTP_PORT=465
-//   SMTP_USER=your-smtp-username
-//   SMTP_PASS=your-smtp-password
-//   SMTP_FROM=Wings Academy <results@wingsacademy.ae>
+//   RESEND_API_KEY=re_...
+//   EMAIL_FROM=Wings Academy <noreply@wingsacademy.ae>
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer";
 
-const FROM_EMAIL = "Wings Academy <results@wingsacademy.ae>";
+const RESEND_API_URL = "https://api.resend.com/emails";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +26,44 @@ interface PaymentPayload {
   moduleName: string;
   amount: number;
   transactionId: string;
+}
+
+async function sendViaResend(opts: {
+  to: string | string[];
+  subject: string;
+  html: string;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY is not set in Edge Function secrets.");
+    return { success: false, error: "RESEND_API_KEY not configured" };
+  }
+
+  const from =
+    Deno.env.get("EMAIL_FROM") ??
+    "Wings Academy <noreply@wingsacademy.ae>";
+
+  const res = await fetch(RESEND_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: Array.isArray(opts.to) ? opts.to : [opts.to],
+      subject: opts.subject,
+      html: opts.html,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("Resend API error:", data);
+    return { success: false, error: data?.message ?? "Resend error" };
+  }
+
+  return { success: true, id: data.id };
 }
 
 Deno.serve(async (req: Request) => {
@@ -162,17 +196,16 @@ Deno.serve(async (req: Request) => {
 </html>
     `.trim();
 
-    // Send via SMTP
-    const smtpHost = Deno.env.get("SMTP_HOST") ?? "";
-    if (!smtpHost) {
-      console.warn(
-        "SMTP_HOST is not set — email not sent. Add SMTP_* vars in Supabase Edge Function secrets."
-      );
+    // Send via Resend
+    const result = await sendViaResend({
+      to: adminEmails,
+      subject: `💰 Payment Received — ${studentName} for ${moduleName}`,
+      html: htmlBody,
+    });
+
+    if (!result.success) {
       return new Response(
-        JSON.stringify({
-          success: false,
-          message: "SMTP not configured",
-        }),
+        JSON.stringify({ success: false, message: result.error }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,
@@ -180,30 +213,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const smtpPort = parseInt(Deno.env.get("SMTP_PORT") ?? "465");
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: {
-        user: Deno.env.get("SMTP_USER") ?? "",
-        pass: Deno.env.get("SMTP_PASS") ?? "",
-      },
-    });
-
-    await transporter.sendMail({
-      from: Deno.env.get("SMTP_FROM") ?? FROM_EMAIL,
-      to: adminEmails,
-      subject: `💰 Payment Received — ${studentName} for ${moduleName}`,
-      html: htmlBody,
-    });
-
-    console.log(`Payment email sent to ${adminEmails.join(", ")}`);
+    console.log(
+      `Payment notification sent to ${adminEmails.join(", ")}. Resend ID: ${result.id}`
+    );
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Email sent to ${adminEmails.join(", ")}`,
+        id: result.id,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

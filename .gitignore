@@ -11,8 +11,16 @@
 !.yarn/versions
 
 # testing
-/coverage
-/tmp
+/coverage/
+/.nyc_output/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright-report-json/
+/playwright-report-xml/
+junit.xml
+VERCEL_QA_REPORT.md
 
 /temp
 # next.js
