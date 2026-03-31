@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { ArrowRight, ArrowLeft } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
+import { createClient } from '@/utils/supabase/server'
 import { updatePassword } from '../actions/auth'
 import PasswordInput from '@/components/form/PasswordInput'
 import SubmitButton from '@/components/common/SubmitButton'
@@ -14,6 +15,10 @@ export default async function ResetPasswordPage({
   searchParams: Promise<{ [key: string]: string | undefined }>
 }) {
   const resolvedParams = await searchParams;
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  const error = resolvedParams?.error || (!user ? 'Invalid or expired reset link. Please request a new one.' : null)
   // Trigger turbopack rebuild to clear cached actions
 
   return (
@@ -46,39 +51,59 @@ export default async function ResetPasswordPage({
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md mb-20">
           <div className="bg-white py-8 px-4 shadow-2xl shadow-primary/5 sm:rounded-2xl sm:px-10 border border-slate-100">
             <form className="space-y-6" action={updatePassword}>
-              {resolvedParams?.error && (
+              {error && (
                 <div className="bg-red-50 text-red-500 font-bold p-3 rounded-xl text-center text-sm border border-red-100">
-                  {resolvedParams.error}
+                  {error}
                 </div>
               )}
 
-              <div>
-                <label htmlFor="password" className="block text-sm font-bold text-slate-700">
-                  New Password
-                </label>
-                <PasswordInput id="password" name="password" placeholder="New password" />
-              </div>
+              {user ? (
+                <>
+                  <div>
+                    <label htmlFor="password" title="New Password" id="password-label" className="block text-sm font-bold text-slate-700">
+                      New Password
+                    </label>
+                    <PasswordInput id="password" name="password" placeholder="New password" />
+                  </div>
 
-              <div>
-                <label htmlFor="confirm-password" className="block text-sm font-bold text-slate-700">
-                  Confirm Password
-                </label>
-                <PasswordInput id="confirm-password" name="confirm-password" placeholder="Confirm new password" />
-              </div>
+                  <div>
+                    <label htmlFor="confirm-password" title="Confirm Password" id="confirm-password-label" className="block text-sm font-bold text-slate-700">
+                      Confirm Password
+                    </label>
+                    <PasswordInput id="confirm-password" name="confirm-password" placeholder="Confirm new password" />
+                  </div>
 
-              <div className="flex flex-col gap-4 pt-2">
-                <SubmitButton
-                  label="Update Password"
-                  className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-lg shadow-primary/20 text-sm font-bold text-white bg-primary hover:bg-[#152e75] transition-all"
-                />
-                <Link
-                  href="/login"
-                  className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 transition-all font-medium"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to login
-                </Link>
-              </div>
+                  <div className="flex flex-col gap-4 pt-2">
+                    <SubmitButton
+                      label="Update Password"
+                      className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-lg shadow-primary/20 text-sm font-bold text-white bg-primary hover:bg-[#152e75] transition-all"
+                    />
+                    <Link
+                      href="/login"
+                      className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 transition-all font-medium"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to login
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-4 pt-2">
+                  <Link
+                    href="/forgot-password"
+                    className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-lg shadow-primary/20 text-sm font-bold text-white bg-primary hover:bg-[#152e75] transition-all"
+                  >
+                    Request new link
+                  </Link>
+                  <Link
+                    href="/login"
+                    className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 transition-all font-medium"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to login
+                  </Link>
+                </div>
+              )}
             </form>
           </div>
         </div>

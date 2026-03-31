@@ -57,6 +57,8 @@ export const metadata: Metadata = {
   },
 };
 
+import AuthHandler from "@/components/auth/AuthHandler";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -67,6 +69,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <AuthHandler />
         {children}
         <SpeedInsights />
       </body>

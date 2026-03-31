@@ -131,8 +131,8 @@ export async function resetPasswordForEmail(formData: FormData) {
     return redirect(`/forgot-password?error=${encodeURIComponent(error.message)}`)
   }
 
-  // Build the recovery URL from the returned token properties
-  const recoveryUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/verify?token=${data.properties.hashed_token}&type=recovery&redirect_to=${encodeURIComponent(`${getURL()}api/auth/callback?next=/reset-password`)}`
+  // Link to our own verification endpoint instead of the standard redirect
+  const recoveryUrl = `${getURL()}api/auth/confirm?token_hash=${data.properties.hashed_token}&type=recovery&next=/reset-password`
 
   // Send the recovery email via Resend
   try {
